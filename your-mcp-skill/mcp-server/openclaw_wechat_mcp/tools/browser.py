@@ -197,7 +197,15 @@ async def extract_qr_base64(page: Page, selectors: list[str]) -> QrImage:
     raise RuntimeError(last_error or "二维码提取失败")
 
 
-async def is_logged_in(page: Page, indicators: list[str]) -> bool:
+async def is_logged_in(page: Page, indicators: list[str], home_url_prefixes: list[str] | None = None) -> bool:
+    try:
+        current_url = page.url
+        if home_url_prefixes:
+            for prefix in home_url_prefixes:
+                if current_url.startswith(prefix):
+                    return True
+    except Exception:
+        pass
     for indicator in indicators:
         try:
             locator = page.locator(indicator).first
@@ -208,8 +216,10 @@ async def is_logged_in(page: Page, indicators: list[str]) -> bool:
     return False
 
 
-async def detect_login_stage(page: Page, logged_in_indicators: list[str]) -> LoginStage:
-    if await is_logged_in(page, logged_in_indicators):
+async def detect_login_stage(
+    page: Page, logged_in_indicators: list[str], home_url_prefixes: list[str] | None = None
+) -> LoginStage:
+    if await is_logged_in(page, logged_in_indicators, home_url_prefixes):
         return LoginStage(stage="logged_in")
     body = (await page.locator("body").inner_text(timeout=3000)) or ""
     if any(s in body for s in ["二维码已失效", "二维码失效", "已过期", "点击刷新", "刷新二维码"]):

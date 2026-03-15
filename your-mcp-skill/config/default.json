@@ -16,6 +16,7 @@
   },
   "wechat_mp": {
     "login_url": "https://mp.weixin.qq.com/",
+    "home_url_prefixes": ["https://mp.weixin.qq.com/cgi-bin/home"],
     "qr_selectors": [
       "img.qrcode",
       "img.qr_img",

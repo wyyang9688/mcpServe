@@ -33,6 +33,13 @@ def test_detect_login_stage_logged_in():
     assert stage.stage == "logged_in"
 
 
+def test_detect_login_stage_logged_in_by_url():
+    page = _FakePage()
+    page.url = "https://mp.weixin.qq.com/cgi-bin/home?t=home/index"
+    stage = asyncio.run(detect_login_stage(page, ["text=公众号平台"], ["https://mp.weixin.qq.com/cgi-bin/home"]))
+    assert stage.stage == "logged_in"
+
+
 def test_detect_login_stage_scanned_pending():
     page = _FakePage(body_text="扫码成功，请在手机上确认")
     stage = asyncio.run(detect_login_stage(page, ["text=公众号平台"]))

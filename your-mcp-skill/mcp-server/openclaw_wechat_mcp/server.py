@@ -14,8 +14,6 @@ from .tools.browser import (
     open_url,
     reset_session,
  )
-from .tools.workflow import run_steps
-from .types.mcp_types import WebStep
 
 
 mcp = FastMCP("openclaw-wechat-mp-mcp")
@@ -39,7 +37,7 @@ async def open_login_page(
         channel=channel,
         executable_path=executable_path,
     )
-    logged_in = await is_logged_in(page, cfg.wechat_mp.logged_in_indicators)
+    logged_in = await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes)
     qr_payload: dict[str, Any] | None = None
     if return_qr and not logged_in:
         try:
@@ -69,7 +67,7 @@ async def open_login_page(
 async def get_login_status() -> dict[str, Any]:
     cfg = load_config()
     page = await open_url(cfg.wechat_mp.login_url)
-    logged_in = await is_logged_in(page, cfg.wechat_mp.logged_in_indicators)
+    logged_in = await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes)
     return {"logged_in": logged_in, "profile_dir": str(get_profile_dir())}
 
 
@@ -80,7 +78,7 @@ async def wait_for_login(timeout_ms: int = 120000, poll_ms: int = 1000) -> dict[
     loop = asyncio.get_running_loop()
     deadline = loop.time() + (timeout_ms / 1000)
     while loop.time() < deadline:
-        if await is_logged_in(page, cfg.wechat_mp.logged_in_indicators):
+        if await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes):
             return {"logged_in": True, "profile_dir": str(get_profile_dir())}
         await asyncio.sleep(poll_ms / 1000)
     return {"logged_in": False, "profile_dir": str(get_profile_dir())}
@@ -124,7 +122,7 @@ async def monitor_login(
         await ctx.info("login_stage", **payload)
 
     while True:
-        stage = await detect_login_stage(page, cfg.wechat_mp.logged_in_indicators)
+        stage = await detect_login_stage(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes)
         if stage.stage != last_stage:
             last_stage = stage.stage
             last_qr = None
@@ -174,10 +172,41 @@ async def reset_login_state() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def run_web_steps(steps: list[dict[str, Any]], url: str | None = None) -> dict[str, Any]:
+async def run_web_steps(
+    draft_title: str | None = None,
+    url: str | None = None,
+    headless: bool | None = None,
+    slow_mo_ms: int | None = None,
+    channel: str | None = None,
+    executable_path: str | None = None,
+) -> dict[str, Any]:
     cfg = load_config()
-    page = await open_url(url or cfg.wechat_mp.login_url)
-    parsed_steps = [WebStep.model_validate(s) for s in steps]
-    resp = await run_steps(page, parsed_steps)
-    return resp.model_dump()
+    page = await open_url(
+        url or cfg.wechat_mp.login_url,
+        headless=headless,
+        slow_mo_ms=slow_mo_ms,
+        channel=channel,
+        executable_path=executable_path,
+    )
+    if not await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes):
+        return {"completed": False, "results": [], "error": "未登录，无法进入草稿箱", "page_url": page.url}
+
+    results: list[dict[str, Any]] = []
+    try:
+        await page.get_by_text("内容管理", exact=False).first.click(timeout=30000)
+        results.append({"index": 0, "action": "click_text", "ok": True, "detail": "内容管理"})
+    except Exception as e:
+        detail = str(e)
+        results.append({"index": 0, "action": "click_text", "ok": False, "detail": detail})
+        return {"completed": False, "results": results, "error": detail, "page_url": page.url}
+
+    try:
+        await page.get_by_text("草稿箱", exact=False).first.click(timeout=30000)
+        results.append({"index": 1, "action": "click_text", "ok": True, "detail": "草稿箱"})
+    except Exception as e:
+        detail = str(e)
+        results.append({"index": 1, "action": "click_text", "ok": False, "detail": detail})
+        return {"completed": False, "results": results, "error": detail, "page_url": page.url}
+
+    return {"completed": True, "results": results, "error": None, "page_url": page.url, "draft_title": draft_title}
 

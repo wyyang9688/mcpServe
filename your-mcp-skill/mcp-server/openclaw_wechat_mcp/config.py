@@ -30,6 +30,7 @@ class SessionConfig(BaseModel):
 
 class WechatMPConfig(BaseModel):
     login_url: str = "https://mp.weixin.qq.com/"
+    home_url_prefixes: list[str] = ["https://mp.weixin.qq.com/cgi-bin/home"]
     qr_selectors: list[str] = [
         "img.qrcode",
         "img.qr_img",
