@@ -1,15 +1,18 @@
----
+***
+
+# 本项目还处在开发阶段还未完成
+
 name: "openclaw-wechat-mp-mcp"
 description: "通过 MCP 控制浏览器完成微信公众号登录与页面流程自动化。Invoke when 需要扫码登录、保存登录态或按步骤点击/等待页面状态。"
 version: "0.1.0"
 runtime: "python"
 entry:
-  cwd: "mcp-server"
-  command: "python"
-  args: ["-m", "openclaw_wechat_mcp"]
+cwd: "mcp-server"
+command: "python"
+args: \["-m", "openclaw\_wechat\_mcp"]
 config:
-  default: "config/default.json"
----
+default: "config/default.json"
+------------------------------
 
 # OpenClaw WeChat MP MCP
 
@@ -48,3 +51,4 @@ your-mcp-skill/
 - `get_login_status`: 返回当前是否已登录
 - `reset_login_state`: 清理登录态并重新登录
 - `run_web_steps`: 按步骤执行点击/等待等操作，返回每步结果与整体完成状态
+
