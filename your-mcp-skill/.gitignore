@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+mcp-server/data/
+mcp-server/.playwright/
+
+.DS_Store
+Thumbs.db
