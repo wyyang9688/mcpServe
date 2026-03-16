@@ -19,11 +19,10 @@
     {
       "name": "run_web_steps",
       "arguments": {
-        "steps": [
-          { "action": "wait_for_text", "text": "内容与互动", "timeout_ms": 60000 },
-          { "action": "click_text", "text": "内容与互动" },
-          { "action": "wait_for_text", "text": "群发功能", "timeout_ms": 60000 }
-        ]
+        "draft_title": "测试文章标题",
+        "headless": false,
+        "slow_mo_ms": 200,
+        "channel": "msedge"
       }
     }
   ]

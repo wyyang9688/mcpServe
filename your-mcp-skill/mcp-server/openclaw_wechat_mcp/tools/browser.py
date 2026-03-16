@@ -145,6 +145,25 @@ async def open_url(
     return page
 
 
+async def get_current_page(
+    *,
+    headless: bool | None = None,
+    slow_mo_ms: int | None = None,
+    channel: str | None = None,
+    executable_path: str | None = None,
+) -> Page:
+    overrides: dict[str, Any] = {}
+    if headless is not None:
+        overrides["headless"] = headless
+    if slow_mo_ms is not None:
+        overrides["slow_mo_ms"] = slow_mo_ms
+    if channel is not None:
+        overrides["channel"] = channel
+    if executable_path is not None:
+        overrides["executable_path"] = executable_path
+    return await _browser.get_page(overrides if overrides else None)
+
+
 async def _try_get_qr_from_selector(page: Page, selector: str) -> QrImage | None:
     locator = page.locator(selector).first
     try:

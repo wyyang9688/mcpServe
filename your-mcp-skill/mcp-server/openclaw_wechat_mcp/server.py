@@ -6,6 +6,7 @@ from datetime import datetime
 import builtins
 
 from mcp.server.fastmcp import Context, FastMCP
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from .config import load_config, resolve_data_path
 from .tools.browser import (
@@ -13,6 +14,7 @@ from .tools.browser import (
     extract_qr_base64,
     get_profile_dir,
     is_logged_in,
+    get_current_page,
     open_url,
     reset_session,
  )
@@ -299,6 +301,77 @@ async def reset_login_state() -> dict[str, Any]:
 
 
 @mcp.tool()
+async def wait_for_publish_success(
+    draft_title: str | None = None,
+    timeout_ms: int = 180000,
+    poll_ms: int = 1000,
+    headless: bool | None = None,
+    slow_mo_ms: int | None = None,
+    channel: str | None = None,
+    executable_path: str | None = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    cfg = load_config()
+    page = await get_current_page(
+        headless=headless,
+        slow_mo_ms=slow_mo_ms,
+        channel=channel,
+        executable_path=executable_path,
+    )
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + (timeout_ms / 1000)
+
+    async def _is_home() -> bool:
+        try:
+            for prefix in cfg.wechat_mp.home_url_prefixes:
+                if page.url.startswith(prefix):
+                    return True
+        except Exception:
+            return False
+        return False
+
+    async def _has_recent(title: str | None) -> bool:
+        try:
+            recent = page.get_by_text("近期发表", exact=False).first
+            if not await recent.is_visible(timeout=200):
+                return False
+            if title:
+                return await page.get_by_text(title, exact=False).first.is_visible(timeout=200)
+            return True
+        except Exception:
+            return False
+
+    while loop.time() < deadline:
+        home = await _is_home()
+        recent_ok = await _has_recent(draft_title) if home else False
+
+        if home:
+            return {
+                "ok": True,
+                "published": True,
+                "url": page.url,
+                "recent_section": await _has_recent(None),
+                "matched_title": recent_ok,
+                "draft_title": draft_title,
+                "profile_dir": str(get_profile_dir()),
+            }
+
+        if ctx is not None:
+            elapsed = (timeout_ms / 1000) - max(0.0, deadline - loop.time())
+            await ctx.report_progress(elapsed, total=timeout_ms / 1000, message=page.url)
+
+        await asyncio.sleep(poll_ms / 1000)
+
+    return {
+        "ok": False,
+        "published": False,
+        "url": page.url,
+        "draft_title": draft_title,
+        "profile_dir": str(get_profile_dir()),
+    }
+
+
+@mcp.tool()
 async def run_web_steps(
     draft_title: str | None = None,
     url: str | None = None,
@@ -319,6 +392,7 @@ async def run_web_steps(
         return {"completed": False, "results": [], "error": "未登录，无法进入草稿箱", "page_url": page.url}
 
     results: list[dict[str, Any]] = []
+
     try:
         await page.get_by_text("内容管理", exact=False).first.click(timeout=30000)
         results.append({"index": 0, "action": "click_text", "ok": True, "detail": "内容管理"})
@@ -334,6 +408,280 @@ async def run_web_steps(
         detail = str(e)
         results.append({"index": 1, "action": "click_text", "ok": False, "detail": detail})
         return {"completed": False, "results": results, "error": detail, "page_url": page.url}
+
+    try:
+        await page.get_by_text("草稿箱", exact=False).first.wait_for(state="visible", timeout=60000)
+    except Exception:
+        pass
+
+    try:
+        container = page.locator(".publish_card_container").first
+        await container.wait_for(state="visible", timeout=60000)
+
+        if draft_title:
+            seed = (
+                container.locator(".weui-desktop-publish__cover__title")
+                .get_by_text(draft_title, exact=False)
+                .first
+            )
+            await seed.wait_for(state="visible", timeout=60000)
+            scope = seed.locator("xpath=ancestor::div[contains(@class,'weui-desktop-card')][1]")
+            results.append({"index": 2, "action": "find_draft", "ok": True, "detail": f"title={draft_title}"})
+        else:
+            cards = container.locator(".weui-desktop-card:has(.publish_enable_button)")
+            count = await cards.count()
+            if count > 0:
+                scope = cards.first
+                results.append({"index": 2, "action": "find_draft", "ok": True, "detail": f"most_recent count={count}"})
+            else:
+                btns = container.locator(".publish_enable_button")
+                btn_count = await btns.count()
+                if btn_count == 0:
+                    raise RuntimeError("未找到可发表的草稿卡片")
+                scope = btns.first.locator("xpath=ancestor::div[contains(@class,'weui-desktop-card')][1]")
+                results.append(
+                    {"index": 2, "action": "find_draft", "ok": True, "detail": f"most_recent_by_button count={btn_count}"}
+                )
+
+        await scope.wait_for(state="visible", timeout=60000)
+        await scope.hover(timeout=30000)
+        results.append({"index": 3, "action": "hover_card", "ok": True, "detail": None})
+    except Exception as e:
+        detail = str(e)
+        results.append({"index": 2, "action": "find_draft", "ok": False, "detail": detail})
+        return {"completed": False, "results": results, "error": detail, "page_url": page.url, "draft_title": draft_title}
+
+    new_page = None
+    try:
+        publish_btn = scope.locator(".publish_enable_button").first.get_by_text("发表", exact=False).first
+        await publish_btn.wait_for(state="visible", timeout=30000)
+        try:
+            async with page.context.expect_page(timeout=7000) as new_page_info:
+                await publish_btn.click(timeout=30000)
+            new_page = await new_page_info.value
+        except PlaywrightTimeoutError:
+            new_page = None
+        results.append({"index": 4, "action": "click_publish", "ok": True, "detail": None})
+    except Exception as e:
+        detail = str(e)
+        results.append({"index": 4, "action": "click_publish", "ok": False, "detail": detail})
+        return {"completed": False, "results": results, "error": detail, "page_url": page.url, "draft_title": draft_title}
+
+    try:
+        target_prefix = "https://mp.weixin.qq.com/cgi-bin/appmsg"
+        target_page = new_page or page
+
+        for _ in range(60):
+            if target_page.url.startswith(target_prefix):
+                break
+            await asyncio.sleep(0.5)
+
+        if not target_page.url.startswith(target_prefix):
+            try:
+                pages = list(page.context.pages)
+                for p in reversed(pages):
+                    if p.url.startswith(target_prefix):
+                        target_page = p
+                        break
+            except Exception:
+                pass
+            await asyncio.sleep(0.5)
+
+        if not target_page.url.startswith(target_prefix):
+            raise RuntimeError(f"未跳转到发表页面: {target_page.url}")
+
+        try:
+            await target_page.wait_for_load_state("domcontentloaded", timeout=60000)
+        except Exception:
+            pass
+        await asyncio.sleep(1.0)
+
+        results.append({"index": 5, "action": "wait_appmsg", "ok": True, "detail": target_page.url})
+
+        async def _return_wechat_verify(step_index: int) -> dict[str, Any] | None:
+            try:
+                pages = list(page.context.pages)
+            except Exception:
+                pages = [target_page]
+
+            verify_page = None
+            for p in reversed(pages):
+                try:
+                    modal = (
+                        p.locator(".weui-desktop-dialog__wrp, .weui-desktop-dialog, .dialog")
+                        .filter(has_text="微信验证", visible=True)
+                        .first
+                    )
+                    if await modal.is_visible(timeout=800):
+                        verify_page = p
+                        break
+                except Exception:
+                    continue
+
+            if verify_page is None:
+                return None
+
+            try:
+                selectors = [
+                    '.dialog:has-text("微信验证") img.js_qrcode',
+                    '.dialog:has-text("微信验证") img.qrcode',
+                    '.dialog:has-text("微信验证") img[alt*="二维码"]',
+                    '.dialog:has-text("微信验证") canvas',
+                    ".dialog:visible img.js_qrcode",
+                    ".dialog:visible img.qrcode",
+                    ".dialog:visible canvas",
+                    ".weui-desktop-dialog__wrp:visible img",
+                    ".weui-desktop-dialog__wrp:visible canvas",
+                    ".weui-desktop-dialog:visible img",
+                    ".weui-desktop-dialog:visible canvas",
+                ] + cfg.wechat_mp.qr_selectors
+                qr = await extract_qr_base64(verify_page, selectors)
+                qr_payload = {
+                    "mime": qr.mime,
+                    "base64": qr.base64_data,
+                    "data_url": qr.data_url,
+                    "selector": qr.selector,
+                    "source_url": qr.source_url,
+                    "file_path": qr.file_path,
+                    "sha256": qr.sha256,
+                    "bytes_len": qr.bytes_len,
+                    "base64_len": qr.base64_len,
+                }
+            except Exception as e:
+                results.append({"index": step_index, "action": "wechat_verify", "ok": False, "detail": str(e)})
+                return {
+                    "completed": False,
+                    "requires_user_action": True,
+                    "user_action": "wechat_verify",
+                    "qr": None,
+                    "results": results,
+                    "error": "需要微信扫码验证，但二维码提取失败",
+                    "page_url": verify_page.url,
+                    "draft_title": draft_title,
+                }
+
+            results.append({"index": step_index, "action": "wechat_verify", "ok": True, "detail": verify_page.url})
+            return {
+                "completed": False,
+                "requires_user_action": True,
+                "user_action": "wechat_verify",
+                "qr": qr_payload,
+                "results": results,
+                "error": "需要微信扫码验证",
+                "page_url": verify_page.url,
+                "draft_title": draft_title,
+            }
+
+        maybe_verify = await _return_wechat_verify(4)
+        if maybe_verify is not None:
+            return maybe_verify
+
+        maybe_verify = await _return_wechat_verify(5)
+        if maybe_verify is not None:
+            return maybe_verify
+
+        try:
+            no_need = target_page.get_by_role("button", name="无需声明并发表").first
+            if await no_need.is_visible(timeout=1500):
+                await no_need.click(timeout=30000)
+                results.append({"index": 6, "action": "click_no_declare", "ok": True, "detail": "无需声明并发表"})
+        except Exception:
+            pass
+
+        maybe_verify = await _return_wechat_verify(6)
+        if maybe_verify is not None:
+            return maybe_verify
+
+        try:
+            agree = target_page.get_by_role("button", name="同意以上声明").first
+            if await agree.is_visible(timeout=1500):
+                await agree.click(timeout=30000)
+                results.append({"index": 6, "action": "click_agree_declare", "ok": True, "detail": "同意以上声明"})
+        except Exception:
+            pass
+
+        maybe_verify = await _return_wechat_verify(6)
+        if maybe_verify is not None:
+            return maybe_verify
+
+        try:
+            async def _move_mouse_to(locator) -> None:
+                try:
+                    box = await locator.bounding_box()
+                    if box:
+                        await target_page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                        return
+                except Exception:
+                    pass
+                try:
+                    await locator.hover(timeout=30000)
+                except Exception:
+                    pass
+
+            async def _publish_button(scope):
+                return scope.locator("button.weui-desktop-btn.weui-desktop-btn_primary:has-text(\"发表\")").first
+
+            async def _wait_publish_visible(timeout_ms: int) -> None:
+                btn = await _publish_button(target_page)
+                await btn.wait_for(state="visible", timeout=timeout_ms)
+
+            async def _click(locator, step_index: int, detail: str) -> None:
+                await _move_mouse_to(locator)
+                await asyncio.sleep(0.3)
+                try:
+                    await locator.click(timeout=30000)
+                except Exception:
+                    await locator.click(timeout=30000, force=True)
+                results.append({"index": step_index, "action": "click_publish", "ok": True, "detail": detail})
+
+            try:
+                await _wait_publish_visible(60000)
+            except Exception:
+                maybe_verify = await _return_wechat_verify(7)
+                if maybe_verify is not None:
+                    return maybe_verify
+                raise
+            btn1 = await _publish_button(target_page)
+            await _click(btn1, 7, "发表(first)")
+
+            await asyncio.sleep(1.0)
+
+            try:
+                await target_page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:
+                pass
+
+            maybe_verify = await _return_wechat_verify(7)
+            if maybe_verify is not None:
+                return maybe_verify
+
+            dialogs = target_page.locator(".weui-desktop-dialog__wrp:visible, .weui-desktop-dialog:visible")
+            dialog_btn = dialogs.locator("button.weui-desktop-btn.weui-desktop-btn_primary:has-text(\"发表\")").first
+            if await dialog_btn.is_visible(timeout=1000):
+                await _click(dialog_btn, 8, "发表(confirm_dialog)")
+            else:
+                btn2 = await _publish_button(target_page)
+                if await btn2.is_visible(timeout=1000):
+                    await _click(btn2, 8, "发表(second)")
+
+            await asyncio.sleep(1.0)
+            maybe_verify = await _return_wechat_verify(8)
+            if maybe_verify is not None:
+                return maybe_verify
+        except Exception as e:
+            detail = str(e)
+            results.append({"index": 7, "action": "click_publish", "ok": False, "detail": detail})
+            return {
+                "completed": False,
+                "results": results,
+                "error": detail,
+                "page_url": target_page.url,
+                "draft_title": draft_title,
+            }
+    except Exception as e:
+        detail = str(e)
+        results.append({"index": 5, "action": "wait_appmsg", "ok": False, "detail": detail})
+        return {"completed": False, "results": results, "error": detail, "page_url": page.url, "draft_title": draft_title}
 
     return {"completed": True, "results": results, "error": None, "page_url": page.url, "draft_title": draft_title}
 
