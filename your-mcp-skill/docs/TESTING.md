@@ -70,7 +70,7 @@ npm run inspector
    - `monitor_login`
    - `get_login_status`
    - `reset_login_state`
-   - `run_web_steps`
+   - `publish_draft_from_draftbox`
 2. 点击某个 tool，填入参数并执行，查看返回结果是否正常
 
 ### 2.3 测试扫码登录与“推消息”

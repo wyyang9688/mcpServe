@@ -17,7 +17,7 @@
       "arguments": {}
     },
     {
-      "name": "run_web_steps",
+      "name": "publish_draft_from_draftbox",
       "arguments": {
         "draft_title": "测试文章标题",
         "headless": false,

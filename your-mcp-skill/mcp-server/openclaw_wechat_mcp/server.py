@@ -372,7 +372,7 @@ async def wait_for_publish_success(
 
 
 @mcp.tool()
-async def run_web_steps(
+async def publish_draft_from_draftbox(
     draft_title: str | None = None,
     url: str | None = None,
     headless: bool | None = None,

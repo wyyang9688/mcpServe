@@ -35,4 +35,4 @@
 - `monitor_login(timeout_ms?, poll_ms?, url?, headless?, slow_mo_ms?, channel?, executable_path?, push_qr_on_change?)`: 监控扫码/过期/登录阶段，并推送阶段消息
 - `get_login_status()`: 获取当前登录状态
 - `reset_login_state()`: 清理持久化 profile，用于重新登录
-- `run_web_steps(steps, url?)`: 按步骤执行点击/等待/脚本并返回执行结果
+- `publish_draft_from_draftbox(steps?, url?)`: 按步骤执行点击/等待/脚本并返回执行结果
