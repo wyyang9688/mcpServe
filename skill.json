@@ -1,0 +1,34 @@
+{
+  "name": "openclaw-wechat-mp",
+  "version": "0.1.0",
+  "description": "微信公众号自动化MCP服务",
+  "type": "mcp",
+  "mcp": {
+    "command": "python",
+    "args": ["-m", "openclaw_wechat_mcp"],
+    "cwd": "your-mcp-skill/mcp-server",
+    "autoStart": true,
+    "transport": "stdio"
+  },
+  "dependencies": {
+    "python": ">=3.11",
+    "playwright": ">=1.42.0"
+  },
+  "install": {
+    "scripts": {
+      "postinstall": [
+        "cd your-mcp-skill/mcp-server && pip install -r requirements.txt",
+        "playwright install chromium"
+      ]
+    }
+  },
+  "tools": [
+    "open_login_page",
+    "monitor_login", 
+    "publish_draft_from_draftbox",
+    "wait_for_publish_success",
+    "reset_login_state",
+    "get_login_status",
+    "wait_for_login"
+  ]
+}
