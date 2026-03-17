@@ -1,0 +1,30 @@
+{
+  "tools": [
+    {
+      "name": "open_login_page",
+      "arguments": {
+        "url": "https://mp.weixin.qq.com/",
+        "headless": false,
+        "slow_mo_ms": 200
+      }
+    },
+    {
+      "name": "monitor_login",
+      "arguments": { "timeout_ms": 120000, "poll_ms": 1000, "push_qr_on_change": true }
+    },
+    {
+      "name": "get_login_status",
+      "arguments": {}
+    },
+    {
+      "name": "publish_draft_from_draftbox",
+      "arguments": {
+        "draft_title": "测试文章标题",
+        "headless": false,
+        "slow_mo_ms": 200,
+        "channel": "msedge"
+      }
+    }
+  ]
+}
+

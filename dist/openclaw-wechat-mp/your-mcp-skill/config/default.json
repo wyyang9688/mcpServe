@@ -1,0 +1,34 @@
+{
+  "browser": {
+    "type": "chromium",
+    "headless": false,
+    "channel": "msedge",
+    "executable_path": null,
+    "use_system_fallback": true,
+    "slow_mo_ms": 0,
+    "viewport": { "width": 1280, "height": 720 },
+    "locale": "zh-CN",
+    "timezone_id": "Asia/Shanghai",
+    "user_agent": null
+  },
+  "session": {
+    "profile_dir": "data/playwright-profile"
+  },
+  "wechat_mp": {
+    "login_url": "https://mp.weixin.qq.com/",
+    "home_url_prefixes": ["https://mp.weixin.qq.com/cgi-bin/home"],
+    "qr_selectors": [
+      "img.qrcode",
+      "img.qr_img",
+      "img[src*=\"qrcode\"]",
+      "#qrCode img",
+      "canvas"
+    ],
+    "logged_in_indicators": [
+      "text=公众号平台",
+      "text=内容与互动",
+      "text=群发功能"
+    ]
+  }
+}
+
