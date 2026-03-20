@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 from datetime import datetime
 import builtins
+from pathlib import Path
 
 from mcp.server.fastmcp import Context, FastMCP
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -1045,7 +1046,7 @@ async def publish_draft_api(
     title: str,
     content: str,
     author: str | None = "",
-    cover_path: str | None = None,
+    cover_path: str,
     digest: str | None = None,
     appid: str | None = None,
     appsecret: str | None = None,
@@ -1069,13 +1070,14 @@ async def publish_draft_api(
         author = _maybe_decode_unicode(author or "")
         content = _maybe_decode_unicode(content)
         digest = _maybe_decode_unicode(digest or "")
+        # 校验封面路径
+        if not cover_path or not Path(cover_path).is_file():
+            return {"ok": False, "error": "封面路径无效或文件不存在", "media_id": None}
         pub = WeChatPublisher(use_appid, use_secret)
         token = pub.ensure_valid_token()
         results.append({"index": 0, "action": "get_token", "ok": True})
-        thumb_media_id = ""
-        if cover_path:
-            thumb_media_id = pub.upload_image(cover_path)
-            results.append({"index": 1, "action": "upload_image", "ok": True})
+        thumb_media_id = pub.upload_image(cover_path)
+        results.append({"index": 1, "action": "upload_image", "ok": True})
         media_id = pub.add_draft(title=title, content=content, author=author or "", thumb_media_id=thumb_media_id, digest=digest or "" )
         results.append({"index": 2, "action": "add_draft", "ok": True})
         try:
@@ -1098,7 +1100,7 @@ async def create_draft_then_publish(
     title: str,
     content: str,
     author: str | None = "",
-    cover_path: str | None = None,
+    cover_path: str,
     digest: str | None = None,
     headless: bool | None = None,
     slow_mo_ms: int | None = None,
@@ -1126,13 +1128,14 @@ async def create_draft_then_publish(
         author = _maybe_decode_unicode(author or "")
         content = _maybe_decode_unicode(content)
         digest = _maybe_decode_unicode(digest or "")
+        # 校验封面路径
+        if not cover_path or not Path(cover_path).is_file():
+            return {"ok": False, "error": "封面路径无效或文件不存在", "results": [], "media_id": None}
         pub = WeChatPublisher(use_appid, use_secret)
         token = pub.ensure_valid_token()
         steps.append({"index": 0, "action": "get_token", "ok": True})
-        thumb_media_id = ""
-        if cover_path:
-            thumb_media_id = pub.upload_image(cover_path)
-            steps.append({"index": 1, "action": "upload_image", "ok": True})
+        thumb_media_id = pub.upload_image(cover_path)
+        steps.append({"index": 1, "action": "upload_image", "ok": True})
         media_id = pub.add_draft(
             title=title, content=content, author=author or "", thumb_media_id=thumb_media_id, digest=digest or ""
         )
