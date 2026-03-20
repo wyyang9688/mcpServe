@@ -3,7 +3,7 @@
     "type": "chromium",
     "headless": false,
     "channel": "msedge",
-    "executable_path": null,
+    "executable_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "use_system_fallback": true,
     "slow_mo_ms": 0,
     "viewport": { "width": 1280, "height": 720 },
@@ -17,6 +17,8 @@
   "wechat_mp": {
     "login_url": "https://mp.weixin.qq.com/",
     "home_url_prefixes": ["https://mp.weixin.qq.com/cgi-bin/home"],
+    "appid": "",
+    "appsecret": "5f88e89bb7d25ff0bfc40915433dd821",
     "qr_selectors": [
       "img.qrcode",
       "img.qr_img",

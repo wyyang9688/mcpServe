@@ -39,6 +39,8 @@ class WechatMPConfig(BaseModel):
         "canvas",
     ]
     logged_in_indicators: list[str] = ["text=公众号平台"]
+    appid: str | None = None
+    appsecret: str | None = None
 
 
 class AppConfig(BaseModel):
