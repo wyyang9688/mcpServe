@@ -15,13 +15,8 @@ type: "mcp"
 - 自动启动MCP服务
 - 自动配置连接
 - 提供以下工具调用：
-  - `open_login_page`: 打开登录页并返回二维码
-  - `monitor_login`: 监控登录状态  
-  - `publish_draft_from_draftbox`: 发布草稿箱文章
-  - `wait_for_publish_success`: 确认发布成功
-  - `reset_login_state`: 重置登录状态
-  - `get_login_status`: 获取当前登录状态
-  - `wait_for_login`: 等待登录完成
+  - `login_and_wait`: 打开登录页并自动监听登录完成
+  - `publish_end_to_end`: 接口建草稿 + 草稿箱发表 + 自动监听发布成功
 
 ## 工程结构
 
@@ -81,11 +76,9 @@ your-mcp-skill/
 - 已生成标题/作者/HTML 正文，并已将封面图片保存到本机。
 - 需要一键完成接口建草稿与浏览器发表。
 
-**工具入口**
+**工具入口（仅暴露两项）**
 - `login_and_wait`：打开登录页并自动监听登录完成（返回二维码与状态）
 - `publish_end_to_end`：接口创建草稿 + 草稿箱发表 + 自动监听发布成功（最小一键发布）
-- `publish_draft_api`：仅接口创建草稿（返回 media_id）
-- `publish_article`：浏览器内“写新文章”并发表（不走接口）
 
 **参数**
 - `title`：中文标题（避免传“\\uXXXX”）
@@ -94,7 +87,7 @@ your-mcp-skill/
 - `cover_path`：本地封面图片绝对路径（必填，接口/联动工具）
 - 选填：`headless`、`slow_mo_ms`、`channel`、`executable_path`、`appid`、`appsecret`
 
-**联动示例**
+**联动示例（一键发布）**
 ```json
 {
   "name": "publish_end_to_end",
@@ -110,33 +103,7 @@ your-mcp-skill/
 }
 ```
 
-**仅接口草稿**
-```json
-{
-  "name": "publish_draft_api",
-  "arguments": {
-    "title": "示例标题：接口草稿",
-    "author": "浅色流光",
-    "content": "<p>接口创建草稿正文HTML</p>",
-    "cover_path": "g:/xwechat_files/wyyang9688_f676/business/favorite/temp/1.jpg"
-  }
-}
-```
-
-**浏览器直发**
-```json
-{
-  "name": "publish_article",
-  "arguments": {
-    "title": "浏览器直发标题",
-    "author": "浅色流光",
-    "content": "<p>这里是正文HTML</p>",
-    "channel": "chrome",
-    "headless": false,
-    "slow_mo_ms": 200
-  }
-}
-```
+（如需仅接口创建草稿或浏览器直发，请使用内部方法，但默认不对外暴露）
 
 **返回与扫码**
 - 成功：`ok=true`、`published=true`、`url` 指向首页、`matched_title` 表示近期发表匹配。

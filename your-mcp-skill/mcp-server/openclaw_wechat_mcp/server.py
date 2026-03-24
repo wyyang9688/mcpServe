@@ -947,6 +947,24 @@ async def login_and_wait(
     executable_path: str | None = None,
 ) -> dict[str, Any]:
     cfg = load_config()
+    # 先检测当前页面是否已登录
+    page = await open_url(cfg.wechat_mp.login_url, headless=headless, slow_mo_ms=slow_mo_ms, channel=channel, executable_path=executable_path)
+    already = await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes)
+    if already:
+        sc = {
+            "ok": True,
+            "logged_in": True,
+            "stage": "logged_in",
+            "url": getattr(page, "url", None),
+            "profile_dir": str(get_profile_dir()),
+            "initial_qr": None,
+            "timed_out": False,
+        }
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
     # 打开登录页并返回初始二维码
     opened = await open_login_page(
         ctx=ctx,
@@ -973,8 +991,11 @@ async def login_and_wait(
     sc = {
         "ok": bool(status.get("logged_in", False)),
         "logged_in": bool(status.get("logged_in", False)),
+        "stage": status.get("stage", "unknown"),
+        "url": cfg.wechat_mp.login_url,
         "profile_dir": opened.get("profile_dir"),
         "initial_qr": opened.get("qr"),
+        "timed_out": not bool(status.get("logged_in", False)),
     }
     return {
         "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],

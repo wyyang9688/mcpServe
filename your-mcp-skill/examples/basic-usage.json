@@ -1,28 +1,25 @@
 {
   "tools": [
     {
-      "name": "open_login_page",
+      "name": "login_and_wait",
       "arguments": {
-        "url": "https://mp.weixin.qq.com/",
+        "timeout_ms": 300000,
+        "poll_ms": 1000,
         "headless": false,
-        "slow_mo_ms": 200
+        "slow_mo_ms": 200,
+        "channel": "chrome"
       }
     },
     {
-      "name": "monitor_login",
-      "arguments": { "timeout_ms": 120000, "poll_ms": 1000, "push_qr_on_change": true }
-    },
-    {
-      "name": "get_login_status",
-      "arguments": {}
-    },
-    {
-      "name": "publish_draft_from_draftbox",
+      "name": "publish_end_to_end",
       "arguments": {
-        "draft_title": "测试文章标题",
+        "title": "测试文章标题",
+        "author": "浅色流光",
+        "content": "<p>这是由 OpenClaw 生成的排版HTML正文</p>",
+        "cover_path": "g:/xwechat_files/wyyang9688_f676/business/favorite/temp/1.jpg",
         "headless": false,
         "slow_mo_ms": 200,
-        "channel": "msedge"
+        "channel": "chrome"
       }
     }
   ]
