@@ -1,0 +1,15 @@
+{
+  "name": "openclaw-wechat-mp",
+  "version": "0.1.0",
+  "description": "WeChat Official Account automation via MCP",
+  "type": "mcp",
+  "mcp": {
+    "serverPath": "./mcp-server"
+  },
+  "skills": [
+    {
+      "name": "openclaw-wechat-mp",
+      "path": "./SKILL.md"
+    }
+  ]
+}

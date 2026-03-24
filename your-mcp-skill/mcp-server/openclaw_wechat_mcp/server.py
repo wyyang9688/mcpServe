@@ -89,7 +89,7 @@ async def _poll_login_and_notify(page: Any, poll_ms: int, login_timeout_ms: int,
                 pass
 
 
-@mcp.tool()
+
 async def open_login_page(
     ctx: Context,
     url: str | None = None,
@@ -168,7 +168,7 @@ async def open_login_page(
     }
 
 
-@mcp.tool()
+
 async def get_login_status() -> dict[str, Any]:
     cfg = load_config()
     page = await open_url(cfg.wechat_mp.login_url)
@@ -189,7 +189,7 @@ async def wait_for_login(timeout_ms: int = 120000, poll_ms: int = 1000) -> dict[
     return {"logged_in": False, "profile_dir": str(get_profile_dir())}
 
 
-@mcp.tool()
+
 async def monitor_login(
     ctx: Context,
     timeout_ms: int = 300000,
@@ -303,7 +303,7 @@ async def reset_login_state() -> dict[str, Any]:
     return {"ok": True, "profile_dir": str(profile_dir)}
 
 
-@mcp.tool()
+
 async def wait_for_publish_success(
     draft_title: str | None = None,
     timeout_ms: int = 180000,
@@ -374,7 +374,7 @@ async def wait_for_publish_success(
     }
 
 
-@mcp.tool()
+
 async def publish_draft_from_draftbox(
     draft_title: str | None = None,
     url: str | None = None,
@@ -392,7 +392,26 @@ async def publish_draft_from_draftbox(
         executable_path=executable_path,
     )
     if not await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes):
-        return {"completed": False, "results": [], "error": "未登录，无法进入草稿箱", "page_url": page.url}
+        login_info = await open_login_page(
+            ctx=None,
+            url=cfg.wechat_mp.login_url,
+            return_qr=True,
+            headless=headless,
+            slow_mo_ms=slow_mo_ms,
+            channel=channel,
+            executable_path=executable_path,
+            poll_login=True,
+        )
+        return {
+            "completed": False,
+            "results": [],
+            "error": "未登录，已打开登录页，请扫码登录",
+            "page_url": login_info.get("url"),
+            "requires_user_action": True,
+            "user_action": "wechat_login",
+            "qr": login_info.get("qr"),
+            "profile_dir": login_info.get("profile_dir"),
+        }
 
     results: list[dict[str, Any]] = []
 
@@ -712,336 +731,6 @@ async def publish_draft_from_draftbox(
 
 
 
-async def publish_article(
-    ctx: Context,
-    title: str,
-    author: str,
-    content: str,
-    url: str | None = None,
-    headless: bool | None = None,
-    slow_mo_ms: int | None = None,
-    channel: str | None = None,
-    executable_path: str | None = None,
-) -> dict[str, Any]:
-    cfg = load_config()
-    page = await open_url(
-        url or cfg.wechat_mp.login_url,
-        headless=headless,
-        slow_mo_ms=slow_mo_ms,
-        channel=channel,
-        executable_path=executable_path,
-    )
-    if not await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes):
-        return {"completed": False, "results": [], "error": "未登录，无法进入草稿箱", "page_url": page.url}
-    results: list[dict[str, Any]] = []
-    try:
-        await page.get_by_text("内容管理", exact=False).first.click(timeout=30000)
-        results.append({"index": 0, "action": "click_text", "ok": True, "detail": "内容管理"})
-    except Exception as e:
-        detail = str(e)
-        results.append({"index": 0, "action": "click_text", "ok": False, "detail": detail})
-        return {"completed": False, "results": results, "error": detail, "page_url": page.url}
-    try:
-        await page.get_by_text("草稿箱", exact=False).first.click(timeout=30000)
-        results.append({"index": 1, "action": "click_text", "ok": True, "detail": "草稿箱"})
-    except Exception as e:
-        detail = str(e)
-        results.append({"index": 1, "action": "click_text", "ok": False, "detail": detail})
-        return {"completed": False, "results": results, "error": detail, "page_url": page.url}
-    try:
-        await page.get_by_text("草稿箱", exact=False).first.wait_for(state="visible", timeout=60000)
-    except Exception:
-        pass
-    new_page = None
-    try:
-        seed = page.get_by_text("新的创作", exact=False).first
-        try:
-            await seed.wait_for(state="visible", timeout=60000)
-        except Exception:
-            pass
-        try:
-            await seed.hover(timeout=30000)
-        except Exception:
-            box = await seed.bounding_box()
-            if box:
-                await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-        menu_item = page.get_by_text("写新文章", exact=False).first
-        await menu_item.wait_for(state="visible", timeout=30000)
-        async with page.context.expect_page(timeout=7000) as new_page_info:
-            await menu_item.click(timeout=30000)
-        new_page = await new_page_info.value
-        results.append({"index": 2, "action": "new_article", "ok": True, "detail": "写新文章"})
-    except Exception as e:
-        detail = str(e)
-        results.append({"index": 2, "action": "new_article", "ok": False, "detail": detail})
-        return {"completed": False, "results": results, "error": detail, "page_url": page.url}
-    try:
-        target_prefix = "https://mp.weixin.qq.com/cgi-bin/appmsg"
-        target_page = new_page or page
-        for _ in range(60):
-            if target_page.url.startswith(target_prefix):
-                break
-            await asyncio.sleep(0.5)
-        if not target_page.url.startswith(target_prefix):
-            try:
-                pages = list(page.context.pages)
-                for p in reversed(pages):
-                    if p.url.startswith(target_prefix):
-                        target_page = p
-                        break
-            except Exception:
-                pass
-            await asyncio.sleep(0.5)
-        if not target_page.url.startswith(target_prefix):
-            raise RuntimeError(f"未跳转到写新文章页面: {target_page.url}")
-        try:
-            await target_page.wait_for_load_state("domcontentloaded", timeout=60000)
-        except Exception:
-            pass
-        await asyncio.sleep(1.0)
-        results.append({"index": 3, "action": "wait_editor", "ok": True, "detail": target_page.url})
-        def _maybe_decode_unicode(s: str) -> str:
-            try:
-                if "\\u" in s:
-                    import codecs
-                    return codecs.decode(s, "unicode_escape")
-            except Exception:
-                pass
-            return s
-        content = _maybe_decode_unicode(content)
-        async def _fill(placeholders: list[str], text: str) -> bool:
-            for p in placeholders:
-                try:
-                    loc = target_page.get_by_placeholder(p, exact=False).first
-                    if await loc.is_visible(timeout=800):
-                        await loc.fill(text)
-                        return True
-                except Exception:
-                    continue
-            try:
-                loc = target_page.locator(
-                    "input[placeholder*='{}'], textarea[placeholder*='{}'], [contenteditable='true'][data-placeholder*='{}']".format(
-                        placeholders[0], placeholders[0], placeholders[0]
-                    )
-                ).first
-                if await loc.is_visible(timeout=800):
-                    await loc.fill(text)
-                    return True
-            except Exception:
-                pass
-            return False
-        ok1 = await _fill(["请在这里输入标题", "请输入标题", "标题"], title)
-        ok2 = await _fill(["请输入作者", "作者"], author)
-        async def _find_editor() -> Any | None:
-            # 1) 直接在页面查找
-            cand = [
-                target_page.get_by_placeholder("从这里开始写正文", exact=False).first,
-                target_page.get_by_role("textbox").first,
-                target_page.locator("[contenteditable='true']").first,
-                target_page.locator("div[role='textbox']").first,
-            ]
-            for loc in cand:
-                try:
-                    if await loc.is_visible(timeout=800):
-                        return loc
-                except Exception:
-                    continue
-            # 2) 在所有 iframe 中查找
-            try:
-                frames = list(getattr(target_page, "frames", []))
-            except Exception:
-                frames = []
-            for f in reversed(frames):
-                for loc in [
-                    f.get_by_placeholder("从这里开始写正文", exact=False).first,
-                    f.get_by_role("textbox").first,
-                    f.locator("[contenteditable='true']").first,
-                    f.locator("div[role='textbox']").first,
-                ]:
-                    try:
-                        if await loc.is_visible(timeout=800):
-                            return loc
-                    except Exception:
-                        continue
-            return None
-        editor = await _find_editor()
-        if editor is None:
-            raise RuntimeError("正文编辑区域未找到")
-        try:
-            # 对多数富文本编辑器，fill 不生效，采用点击并插入文本
-            await editor.click(timeout=30000)
-            await asyncio.sleep(0.2)
-            await target_page.keyboard.insert_text(content)
-        except Exception:
-            await editor.fill(content)
-        results.append({"index": 4, "action": "fill_fields", "ok": True, "detail": None})
-        try:
-            cover = target_page.get_by_text("拖拽或选择封面", exact=False).first
-            if await cover.is_visible(timeout=1500):
-                try:
-                    await cover.hover(timeout=30000)
-                except Exception:
-                    box = await cover.bounding_box()
-                    if box:
-                        await target_page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                btn = target_page.get_by_text("从正文选择", exact=False).first
-                await btn.wait_for(state="visible", timeout=30000)
-                await btn.click(timeout=30000)
-                next_btn = target_page.get_by_role("button", name="下一步").first
-                if await next_btn.is_visible(timeout=2000):
-                    await next_btn.click(timeout=30000)
-                ok_btn = target_page.get_by_role("button", name="确认").first
-                if await ok_btn.is_visible(timeout=2000):
-                    await ok_btn.click(timeout=30000)
-                results.append({"index": 5, "action": "select_cover", "ok": True, "detail": "从正文选择"})
-            else:
-                results.append({"index": 5, "action": "select_cover", "ok": True, "detail": "skip"})
-        except Exception as e:
-            results.append({"index": 5, "action": "select_cover", "ok": False, "detail": str(e)})
-        await asyncio.sleep(1.0)
-        async def _return_wechat_verify(step_index: int) -> dict[str, Any] | None:
-            try:
-                pages = list(page.context.pages)
-            except Exception:
-                pages = [target_page]
-            verify_page = None
-            for p in reversed(pages):
-                try:
-                    modal = (
-                        p.locator(".weui-desktop-dialog__wrp, .weui-desktop-dialog, .dialog")
-                        .filter(has_text="微信验证", visible=True)
-                        .first
-                    )
-                    if await modal.is_visible(timeout=800):
-                        verify_page = p
-                        break
-                except Exception:
-                    continue
-            if verify_page is None:
-                return None
-            try:
-                selectors = [
-                    '.dialog:has-text("微信验证") img.js_qrcode',
-                    '.dialog:has-text("微信验证") img.qrcode',
-                    '.dialog:has-text("微信验证") img[alt*="二维码"]',
-                    '.dialog:has-text("微信验证") canvas',
-                    ".dialog:visible img.js_qrcode",
-                    ".dialog:visible img.qrcode",
-                    ".dialog:visible canvas",
-                    ".weui-desktop-dialog__wrp:visible img",
-                    ".weui-desktop-dialog__wrp:visible canvas",
-                    ".weui-desktop-dialog:visible img",
-                    ".weui-desktop-dialog:visible canvas",
-                ] + cfg.wechat_mp.qr_selectors
-                qr = await extract_qr_base64(verify_page, selectors)
-                qr_payload = {
-                    "mime": qr.mime,
-                    "base64": qr.base64_data,
-                    "data_url": qr.data_url,
-                    "selector": qr.selector,
-                    "source_url": qr.source_url,
-                    "file_path": qr.file_path,
-                    "sha256": qr.sha256,
-                    "bytes_len": qr.bytes_len,
-                    "base64_len": qr.base64_len,
-                }
-            except Exception as e:
-                results.append({"index": step_index, "action": "wechat_verify", "ok": False, "detail": str(e)})
-                return {
-                    "completed": False,
-                    "requires_user_action": True,
-                    "user_action": "wechat_verify",
-                    "qr": None,
-                    "results": results,
-                    "error": "需要微信扫码验证，但二维码提取失败",
-                    "page_url": verify_page.url,
-                    "article_title": title,
-                }
-            results.append({"index": step_index, "action": "wechat_verify", "ok": True, "detail": "qr"})
-            return {
-                "completed": False,
-                "requires_user_action": True,
-                "user_action": "wechat_verify",
-                "qr": qr_payload,
-                "results": results,
-                "error": None,
-                "page_url": verify_page.url,
-                "article_title": title,
-            }
-        async def _move_mouse_to(locator) -> None:
-            try:
-                box = await locator.bounding_box()
-                if box:
-                    await target_page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                    return
-            except Exception:
-                pass
-            try:
-                await locator.hover(timeout=30000)
-            except Exception:
-                pass
-        async def _publish_button(scope):
-            return scope.locator("button.weui-desktop-btn.weui-desktop-btn_primary:has-text(\"发表\")").first
-        async def _wait_publish_visible(timeout_ms: int) -> None:
-            btn = await _publish_button(target_page)
-            await btn.wait_for(state="visible", timeout=timeout_ms)
-        async def _click(locator, step_index: int, detail: str) -> None:
-            await _move_mouse_to(locator)
-            await asyncio.sleep(0.3)
-            try:
-                await locator.click(timeout=30000)
-            except Exception:
-                await locator.click(timeout=30000, force=True)
-            results.append({"index": step_index, "action": "click_publish", "ok": True, "detail": detail})
-        try:
-            try:
-                await _wait_publish_visible(60000)
-            except Exception:
-                maybe_verify = await _return_wechat_verify(6)
-                if maybe_verify is not None:
-                    return maybe_verify
-                raise
-            btn1 = await _publish_button(target_page)
-            await _click(btn1, 6, "发表(first)")
-            await asyncio.sleep(1.0)
-            try:
-                await target_page.wait_for_load_state("domcontentloaded", timeout=10000)
-            except Exception:
-                pass
-            maybe_verify = await _return_wechat_verify(6)
-            if maybe_verify is not None:
-                return maybe_verify
-            dialogs = target_page.locator(".weui-desktop-dialog__wrp:visible, .weui-desktop-dialog:visible")
-            dialog_btn = dialogs.locator("button.weui-desktop-btn.weui-desktop-btn_primary:has-text(\"发表\")").first
-            if await dialog_btn.is_visible(timeout=1000):
-                await _click(dialog_btn, 7, "发表(confirm_dialog)")
-            else:
-                btn2 = await _publish_button(target_page)
-                if await btn2.is_visible(timeout=1000):
-                    await _click(btn2, 7, "发表(second)")
-            await asyncio.sleep(1.0)
-            maybe_verify = await _return_wechat_verify(7)
-            if maybe_verify is not None:
-                return maybe_verify
-        except Exception as e:
-            detail = str(e)
-            results.append({"index": 6, "action": "click_publish", "ok": False, "detail": detail})
-            return {"completed": False, "results": results, "error": detail, "page_url": target_page.url, "article_title": title}
-    except Exception as e:
-        detail = str(e)
-        results.append({"index": 3, "action": "wait_editor", "ok": False, "detail": detail})
-        return {"completed": False, "results": results, "error": detail, "page_url": page.url}
-    poll = await wait_for_publish_success(draft_title=title, ctx=ctx)
-    return {
-        "completed": True,
-        "results": results,
-        "error": None,
-        "page_url": page.url,
-        "article_title": title,
-        "publish_result": poll,
-    }
-
-@mcp.tool()
 async def publish_draft_api(
     ctx: Context,
     title: str,
@@ -1115,7 +804,7 @@ async def publish_draft_api(
             "isError": False,
         }
 
-@mcp.tool()
+
 async def create_draft_then_publish(
     ctx: Context,
     title: str,
@@ -1237,6 +926,189 @@ async def create_draft_then_publish(
         "published": poll.get("published", False),
         "url": poll.get("url"),
         "results": steps,
+        "media_id": media_id,
+        "profile_dir": poll.get("profile_dir"),
+        "matched_title": poll.get("matched_title"),
+    }
+    return {
+        "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+        "structuredContent": sc,
+        "isError": False,
+    }
+
+@mcp.tool()
+async def login_and_wait(
+    ctx: Context,
+    timeout_ms: int = 300000,
+    poll_ms: int = 1000,
+    headless: bool | None = None,
+    slow_mo_ms: int | None = None,
+    channel: str | None = None,
+    executable_path: str | None = None,
+) -> dict[str, Any]:
+    cfg = load_config()
+    # 打开登录页并返回初始二维码
+    opened = await open_login_page(
+        ctx=ctx,
+        url=cfg.wechat_mp.login_url,
+        return_qr=True,
+        headless=headless,
+        slow_mo_ms=slow_mo_ms,
+        channel=channel,
+        executable_path=executable_path,
+        poll_login=False,
+    )
+    # 自动监听登录完成
+    status = await monitor_login(
+        ctx=ctx,
+        timeout_ms=timeout_ms,
+        poll_ms=poll_ms,
+        url=cfg.wechat_mp.login_url,
+        headless=headless,
+        slow_mo_ms=slow_mo_ms,
+        channel=channel,
+        executable_path=executable_path,
+        push_qr_on_change=True,
+    )
+    sc = {
+        "ok": bool(status.get("logged_in", False)),
+        "logged_in": bool(status.get("logged_in", False)),
+        "profile_dir": opened.get("profile_dir"),
+        "initial_qr": opened.get("qr"),
+    }
+    return {
+        "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+        "structuredContent": sc,
+        "isError": False,
+    }
+
+@mcp.tool()
+async def publish_end_to_end(
+    ctx: Context,
+    title: str,
+    content: str,
+    cover_path: str,
+    author: str | None = "",
+    digest: str | None = None,
+    headless: bool | None = None,
+    slow_mo_ms: int | None = None,
+    channel: str | None = None,
+    executable_path: str | None = None,
+    appid: str | None = None,
+    appsecret: str | None = None,
+) -> dict[str, Any]:
+    cfg = load_config()
+    use_appid = appid or getattr(cfg.wechat_mp, "appid", None)
+    use_secret = appsecret or getattr(cfg.wechat_mp, "appsecret", None)
+    if not use_appid or not use_secret:
+        sc = {"ok": False, "error": "缺少appid或appsecret", "results": [], "media_id": None}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
+    # 解码输入
+    def _maybe_decode_unicode(s: str) -> str:
+        try:
+            if "\\u" in s:
+                import codecs
+                return codecs.decode(s, "unicode_escape")
+        except Exception:
+            pass
+        return s
+    title = _maybe_decode_unicode(title)
+    author = _maybe_decode_unicode(author or "")
+    content = _maybe_decode_unicode(content)
+    digest = _maybe_decode_unicode(digest or "")
+    # 校验封面路径
+    if not cover_path or not Path(cover_path).is_file():
+        sc = {"ok": False, "error": "封面路径无效或文件不存在", "results": [], "media_id": None}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
+    # 若未登录，自动唤起登录页并监听
+    page = await open_url(cfg.wechat_mp.login_url, headless=headless, slow_mo_ms=slow_mo_ms, channel=channel, executable_path=executable_path)
+    if not await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes):
+        opened = await open_login_page(
+            ctx=ctx,
+            url=cfg.wechat_mp.login_url,
+            return_qr=True,
+            headless=headless,
+            slow_mo_ms=slow_mo_ms,
+            channel=channel,
+            executable_path=executable_path,
+            poll_login=False,
+        )
+        status = await monitor_login(
+            ctx=ctx,
+            timeout_ms=300000,
+            poll_ms=1000,
+            url=cfg.wechat_mp.login_url,
+            headless=headless,
+            slow_mo_ms=slow_mo_ms,
+            channel=channel,
+            executable_path=executable_path,
+            push_qr_on_change=True,
+        )
+        if not bool(status.get("logged_in", False)):
+            sc = {
+                "ok": False,
+                "error": "登录超时或未完成",
+                "results": [],
+                "media_id": None,
+                "requires_user_action": True,
+                "user_action": "wechat_login",
+                "qr": opened.get("qr"),
+            }
+            return {
+                "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+                "structuredContent": sc,
+                "isError": False,
+            }
+    # 接口创建草稿
+    pub = WeChatPublisher(use_appid, use_secret)
+    token = pub.ensure_valid_token()
+    thumb_media_id = pub.upload_image(cover_path)
+    media_id = pub.add_draft(title=title, content=content, author=author or "", thumb_media_id=thumb_media_id, digest=digest or "")
+    # 草稿箱发表
+    pub_result = await publish_draft_from_draftbox(
+        draft_title=title,
+        url=cfg.wechat_mp.login_url,
+        headless=headless,
+        slow_mo_ms=slow_mo_ms,
+        channel=channel,
+        executable_path=executable_path,
+    )
+    if pub_result.get("requires_user_action"):
+        sc = {
+            "ok": False,
+            "requires_user_action": True,
+            "user_action": pub_result.get("user_action"),
+            "qr": pub_result.get("qr"),
+            "results": pub_result.get("results", []),
+            "media_id": media_id,
+        }
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
+    if not pub_result.get("completed"):
+        sc = {"ok": False, "error": pub_result.get("error"), "results": pub_result.get("results", []), "media_id": media_id}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
+    # 成功监听
+    poll = await wait_for_publish_success(draft_title=title, ctx=ctx)
+    sc = {
+        "ok": poll.get("ok", False),
+        "published": poll.get("published", False),
+        "url": poll.get("url"),
+        "results": pub_result.get("results", []),
         "media_id": media_id,
         "profile_dir": poll.get("profile_dir"),
         "matched_title": poll.get("matched_title"),
