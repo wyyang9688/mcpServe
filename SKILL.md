@@ -37,22 +37,32 @@ your-mcp-skill/
 
 安装后直接调用工具即可，无需手动配置MCP连接。
 
-### 登录流程（稳定版）
+### 登录（单步）
 
-1. 调用 `open_login_page`
-   - 如果返回 `logged_in=true`：说明当前会话已登录，直接进入后续业务流程
-   - 如果返回 `logged_in=false`：
-     - 使用 `qr.data_url`（优先）或 `qr.base64` 展示二维码，让用户用手机微信扫码并确认
-2. 立刻调用 `monitor_login`
-   - `monitor_login` 会持续监控，直到登录成功或超时
-   - 当返回 `logged_in=true` 时，再进入后续业务流程
-3. 失败处理
-   - 若 `monitor_login` 超时（`logged_in=false`），提示用户重试
-   - 如果用户需要强制重新扫码，先调用 `reset_login_state` 清理 profile 后再重走登录流程
+仅调用 `login_and_wait`，会自动打开登录页并监听登录完成（默认超时 300000ms，间隔 1000ms）。示例：
 
-### 发布确认（稳定版）
+```json
+{ "name": "login_and_wait", "arguments": { "timeout_ms": 300000, "poll_ms": 1000, "headless": false, "slow_mo_ms": 200, "channel": "chrome" } }
+```
 
-当发布流程触发"微信验证"时，`publish_draft_from_draftbox` 会返回 `requires_user_action=true` 且携带二维码。用户完成扫码验证后，推荐调用 `wait_for_publish_success` 做最终确认。
+### 发布（一键）
+
+仅调用 `publish_end_to_end`，内部会接口创建草稿→草稿箱发表→自动监听发布成功（默认超时 180000ms，间隔 1000ms）。如出现“微信验证”，返回 `requires_user_action=true` 与 `qr` 用于扫码，扫码后再次调用继续。示例：
+
+```json
+{
+  "name": "publish_end_to_end",
+  "arguments": {
+    "title": "示例标题",
+    "author": "浅色流光",
+    "content": "<p>OpenClaw 生成的排版HTML</p>",
+    "cover_path": "g:/path/to/cover.jpg",
+    "channel": "chrome",
+    "headless": false,
+    "slow_mo_ms": 200
+  }
+}
+```
 
 ## 技术栈
 
