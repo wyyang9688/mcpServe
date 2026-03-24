@@ -17,7 +17,7 @@
   "wechat_mp": {
     "login_url": "https://mp.weixin.qq.com/",
     "home_url_prefixes": ["https://mp.weixin.qq.com/cgi-bin/home"],
-    "appid": "",
+    "appid": "wxc6f07b6318b1744e",
     "appsecret": "5f88e89bb7d25ff0bfc40915433dd821",
     "qr_selectors": [
       "img.qrcode",

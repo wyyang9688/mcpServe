@@ -5,6 +5,7 @@ from typing import Any
 from datetime import datetime
 import builtins
 from pathlib import Path
+import json
 
 from mcp.server.fastmcp import Context, FastMCP
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -175,7 +176,7 @@ async def get_login_status() -> dict[str, Any]:
     return {"logged_in": logged_in, "profile_dir": str(get_profile_dir())}
 
 
-@mcp.tool()
+
 async def wait_for_login(timeout_ms: int = 120000, poll_ms: int = 1000) -> dict[str, Any]:
     cfg = load_config()
     page = await open_url(cfg.wechat_mp.login_url)
@@ -710,7 +711,7 @@ async def publish_draft_from_draftbox(
     return {"completed": True, "results": results, "error": None, "page_url": page.url, "draft_title": draft_title}
 
 
-@mcp.tool()
+
 async def publish_article(
     ctx: Context,
     title: str,
@@ -1045,8 +1046,8 @@ async def publish_draft_api(
     ctx: Context,
     title: str,
     content: str,
-    author: str | None = "",
     cover_path: str,
+    author: str | None = "",
     digest: str | None = None,
     appid: str | None = None,
     appsecret: str | None = None,
@@ -1055,7 +1056,12 @@ async def publish_draft_api(
     use_appid = appid or getattr(cfg.wechat_mp, "appid", None)
     use_secret = appsecret or getattr(cfg.wechat_mp, "appsecret", None)
     if not use_appid or not use_secret:
-        return {"ok": False, "error": "缺少appid或appsecret", "media_id": None}
+        sc = {"ok": False, "error": "缺少appid或appsecret", "results": [], "media_id": None}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
     results: list[dict[str, Any]] = []
     try:
         def _maybe_decode_unicode(s: str) -> str:
@@ -1072,7 +1078,12 @@ async def publish_draft_api(
         digest = _maybe_decode_unicode(digest or "")
         # 校验封面路径
         if not cover_path or not Path(cover_path).is_file():
-            return {"ok": False, "error": "封面路径无效或文件不存在", "media_id": None}
+            sc = {"ok": False, "error": "封面路径无效或文件不存在", "results": [], "media_id": None}
+            return {
+                "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+                "structuredContent": sc,
+                "isError": False,
+            }
         pub = WeChatPublisher(use_appid, use_secret)
         token = pub.ensure_valid_token()
         results.append({"index": 0, "action": "get_token", "ok": True})
@@ -1084,7 +1095,12 @@ async def publish_draft_api(
             await ctx.info(f"draft_created media_id={media_id}")
         except Exception:
             pass
-        return {"ok": True, "media_id": media_id, "results": results}
+        sc = {"ok": True, "error": None, "results": results, "media_id": media_id}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
     except Exception as e:
         detail = str(e)
         results.append({"index": len(results), "action": "error", "ok": False, "detail": detail})
@@ -1092,15 +1108,20 @@ async def publish_draft_api(
             await ctx.error(f"publish_draft_api_error {detail}")
         except Exception:
             pass
-        return {"ok": False, "error": detail, "results": results, "media_id": None}
+        sc = {"ok": False, "error": detail, "results": results, "media_id": None}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
 
 @mcp.tool()
 async def create_draft_then_publish(
     ctx: Context,
     title: str,
     content: str,
-    author: str | None = "",
     cover_path: str,
+    author: str | None = "",
     digest: str | None = None,
     headless: bool | None = None,
     slow_mo_ms: int | None = None,
@@ -1113,7 +1134,12 @@ async def create_draft_then_publish(
     use_appid = appid or getattr(cfg.wechat_mp, "appid", None)
     use_secret = appsecret or getattr(cfg.wechat_mp, "appsecret", None)
     if not use_appid or not use_secret:
-        return {"ok": False, "error": "缺少appid或appsecret", "results": [], "media_id": None}
+        sc = {"ok": False, "error": "缺少appid或appsecret", "results": [], "media_id": None}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
     steps: list[dict[str, Any]] = []
     try:
         def _maybe_decode_unicode(s: str) -> str:
@@ -1130,7 +1156,12 @@ async def create_draft_then_publish(
         digest = _maybe_decode_unicode(digest or "")
         # 校验封面路径
         if not cover_path or not Path(cover_path).is_file():
-            return {"ok": False, "error": "封面路径无效或文件不存在", "results": [], "media_id": None}
+            sc = {"ok": False, "error": "封面路径无效或文件不存在", "results": [], "media_id": None}
+            return {
+                "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+                "structuredContent": sc,
+                "isError": False,
+            }
         pub = WeChatPublisher(use_appid, use_secret)
         token = pub.ensure_valid_token()
         steps.append({"index": 0, "action": "get_token", "ok": True})
@@ -1151,7 +1182,12 @@ async def create_draft_then_publish(
             await ctx.error(f"create_draft_error {detail}")
         except Exception:
             pass
-        return {"ok": False, "error": detail, "results": steps, "media_id": None}
+        sc = {"ok": False, "error": detail, "results": steps, "media_id": None}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
 
     try:
         pub_result = await publish_draft_from_draftbox(
@@ -1164,7 +1200,7 @@ async def create_draft_then_publish(
         )
         steps.append({"index": 3, "action": "publish_draft_from_draftbox", "ok": pub_result.get("completed", False)})
         if pub_result.get("requires_user_action"):
-            return {
+            sc = {
                 "ok": False,
                 "requires_user_action": True,
                 "user_action": pub_result.get("user_action"),
@@ -1172,16 +1208,31 @@ async def create_draft_then_publish(
                 "results": steps + pub_result.get("results", []),
                 "media_id": media_id,
             }
+            return {
+                "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+                "structuredContent": sc,
+                "isError": False,
+            }
         if not pub_result.get("completed"):
-            return {"ok": False, "error": pub_result.get("error"), "results": steps + pub_result.get("results", [])}
+            sc = {"ok": False, "error": pub_result.get("error"), "results": steps + pub_result.get("results", [])}
+            return {
+                "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+                "structuredContent": sc,
+                "isError": False,
+            }
     except Exception as e:
         detail = str(e)
         steps.append({"index": 3, "action": "publish_draft_from_draftbox", "ok": False, "detail": detail})
-        return {"ok": False, "error": detail, "results": steps}
+        sc = {"ok": False, "error": detail, "results": steps}
+        return {
+            "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+            "structuredContent": sc,
+            "isError": False,
+        }
 
     poll = await wait_for_publish_success(draft_title=title, ctx=ctx)
     steps.append({"index": 4, "action": "wait_for_publish_success", "ok": poll.get("ok", False)})
-    return {
+    sc = {
         "ok": poll.get("ok", False),
         "published": poll.get("published", False),
         "url": poll.get("url"),
@@ -1189,4 +1240,9 @@ async def create_draft_then_publish(
         "media_id": media_id,
         "profile_dir": poll.get("profile_dir"),
         "matched_title": poll.get("matched_title"),
+    }
+    return {
+        "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
+        "structuredContent": sc,
+        "isError": False,
     }
