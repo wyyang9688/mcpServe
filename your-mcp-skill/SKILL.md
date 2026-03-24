@@ -37,22 +37,32 @@ your-mcp-skill/
 
 安装后直接调用工具即可，无需手动配置MCP连接。
 
-### 登录流程（稳定版）
+### 登录（单步）
 
-1. 调用 `open_login_page`
-   - 如果返回 `logged_in=true`：说明当前会话已登录，直接进入后续业务流程
-   - 如果返回 `logged_in=false`：
-     - 使用 `qr.data_url`（优先）或 `qr.base64` 展示二维码，让用户用手机微信扫码并确认
-2. 立刻调用 `monitor_login`
-   - `monitor_login` 会持续监控，直到登录成功或超时
-   - 当返回 `logged_in=true` 时，再进入后续业务流程
-3. 失败处理
-   - 若 `monitor_login` 超时（`logged_in=false`），提示用户重试
-   - 如果用户需要强制重新扫码，先调用 `reset_login_state` 清理 profile 后再重走登录流程
+仅调用 `login_and_wait`，会自动打开登录页并监听登录完成（默认超时 300000ms，间隔 1000ms）。示例：
 
-### 发布确认（稳定版）
+```json
+{ "name": "login_and_wait", "arguments": { "timeout_ms": 300000, "poll_ms": 1000, "headless": false, "slow_mo_ms": 200, "channel": "chrome" } }
+```
 
-当发布流程触发"微信验证"时，`publish_draft_from_draftbox` 会返回 `requires_user_action=true` 且携带二维码。用户完成扫码验证后，推荐调用 `wait_for_publish_success` 做最终确认。
+### 发布（一键）
+
+仅调用 `publish_end_to_end`，内部会接口创建草稿→草稿箱发表→自动监听发布成功（默认超时 180000ms，间隔 1000ms）。如出现“微信验证”，返回 `requires_user_action=true` 与 `qr` 用于扫码，扫码后再次调用继续。示例：
+
+```json
+{
+  "name": "publish_end_to_end",
+  "arguments": {
+    "title": "示例标题",
+    "author": "浅色流光",
+    "content": "<p>OpenClaw 生成的排版HTML</p>",
+    "cover_path": "g:/path/to/cover.jpg",
+    "channel": "chrome",
+    "headless": false,
+    "slow_mo_ms": 200
+  }
+}
+```
 
 ## 技术栈
 
@@ -72,27 +82,6 @@ your-mcp-skill/
 
 该模块提供从生成内容到发布的整链路能力：生成标题 → 生成排版 HTML 正文 → 设置作者 → 保存封面 → 接口创建草稿 → 草稿箱发表 → 发布成功确认（含扫码）。
 
-## 快速开始（仅两步）
-- 登录（单步）：
-  ```json
-  { "name": "login_and_wait", "arguments": { "timeout_ms": 300000, "poll_ms": 1000, "headless": false, "slow_mo_ms": 200, "channel": "chrome" } }
-  ```
-- 发布（一键）：
-  ```json
-  {
-    "name": "publish_end_to_end",
-    "arguments": {
-      "title": "示例标题",
-      "author": "浅色流光",
-      "content": "<p>OpenClaw 生成的排版HTML</p>",
-      "cover_path": "g:/path/to/cover.jpg",
-      "channel": "chrome",
-      "headless": false,
-      "slow_mo_ms": 200
-    }
-  }
-  ```
-
 **何时调用**
 - 已生成标题/作者/HTML 正文，并已将封面图片保存到本机。
 - 需要一键完成接口建草稿与浏览器发表。
@@ -107,25 +96,6 @@ your-mcp-skill/
 - `content`：正文（支持 HTML）
 - `cover_path`：本地封面图片绝对路径（必填，接口/联动工具）
 - 选填：`headless`、`slow_mo_ms`、`channel`、`executable_path`、`appid`、`appsecret`
-
-**返回约定**
-- 工具统一返回三段：
-  - `content`: 文本型 JSON，便于直接展示
-  - `structuredContent`: 结构化对象，便于程序分支
-  - `isError`: 标志位（true/false）
-- 登录/发布成功场景：
-  - `structuredContent.logged_in=true`（登录）
-  - `structuredContent.published=true`（发布）
-- 需要用户操作：
-  - `structuredContent.requires_user_action=true`，`user_action` 可能是 `wechat_login` 或 `wechat_verify`，并携带 `qr`
-- 错误示例（缺少凭据）：
-  ```json
-  {
-    "content": [ { "type": "text", "text": "{\n  \"ok\": false,\n  \"error\": \"缺少appid或appsecret\",\n  \"results\": [],\n  \"media_id\": null\n}" } ],
-    "structuredContent": { "ok": false, "error": "缺少appid或appsecret", "results": [], "media_id": null },
-    "isError": false
-  }
-  ```
 
 **联动示例（一键发布）**
 ```json

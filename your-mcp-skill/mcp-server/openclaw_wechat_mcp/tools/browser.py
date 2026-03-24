@@ -43,8 +43,41 @@ class BrowserManager:
         self._launch_overrides: dict[str, Any] = {}
 
     async def _ensure_started(self) -> None:
+        # 如果已有页面，但已被外部关闭（例如用户手动关闭浏览器窗口），则重启上下文
         if self._page is not None:
-            return
+            try:
+                if hasattr(self._page, "is_closed") and self._page.is_closed():
+                    self._page = None
+                    # 关闭旧上下文与 Playwright
+                    try:
+                        if self._context is not None:
+                            await self._context.close()
+                    except Exception:
+                        pass
+                    self._context = None
+                    try:
+                        if self._pw is not None:
+                            await self._pw.stop()
+                    except Exception:
+                        pass
+                    self._pw = None
+                else:
+                    return
+            except Exception:
+                # 无法检测状态，尝试重启
+                self._page = None
+                try:
+                    if self._context is not None:
+                        await self._context.close()
+                except Exception:
+                    pass
+                self._context = None
+                try:
+                    if self._pw is not None:
+                        await self._pw.stop()
+                except Exception:
+                    pass
+                self._pw = None
         self._cfg = load_config()
         profile_dir = resolve_data_path(self._cfg.session.profile_dir)
         profile_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +138,12 @@ class BrowserManager:
                 if self._page is not None:
                     await self.close()
             await self._ensure_started()
+            # 双重校验，避免因外部关闭导致返回失效页面
+            try:
+                if self._page is None or (hasattr(self._page, "is_closed") and self._page.is_closed()):
+                    await self._ensure_started()
+            except Exception:
+                await self._ensure_started()
             assert self._page is not None
             return self._page
 

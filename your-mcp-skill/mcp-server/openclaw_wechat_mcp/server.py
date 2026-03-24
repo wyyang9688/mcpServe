@@ -1049,9 +1049,17 @@ async def publish_end_to_end(
             "structuredContent": sc,
             "isError": False,
         }
-    # 若未登录，自动唤起登录页并监听
     page = await open_url(cfg.wechat_mp.login_url, headless=headless, slow_mo_ms=slow_mo_ms, channel=channel, executable_path=executable_path)
-    if not await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes):
+    url_ok = False
+    try:
+        for prefix in cfg.wechat_mp.home_url_prefixes:
+            if getattr(page, "url", "") and str(page.url).startswith(prefix):
+                url_ok = True
+                break
+    except Exception:
+        url_ok = False
+    already = url_ok or await is_logged_in(page, cfg.wechat_mp.logged_in_indicators, cfg.wechat_mp.home_url_prefixes)
+    if not already:
         opened = await open_login_page(
             ctx=ctx,
             url=cfg.wechat_mp.login_url,
