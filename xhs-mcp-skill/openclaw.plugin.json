@@ -5,6 +5,7 @@
   "tools": [
     { "name": "login_and_wait" },
     { "name": "publish_image_text" },
+    { "name": "publish_long_article" },
     { "name": "reply_comment" }
   ]
 }

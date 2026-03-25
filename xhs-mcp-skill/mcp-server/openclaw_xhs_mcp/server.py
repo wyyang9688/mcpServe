@@ -84,3 +84,16 @@ async def reply_comment(note_url: str, text: str, headless: bool = False, accoun
         return _resp({"ok": False, "requires_user_action": True, "user_action": "xhs_login"})
     pub.reply_comment(note_url, text)
     return _resp({"ok": True, "replied": True, "note_url": note_url})
+
+@mcp.tool()
+async def publish_long_article(title: str, content: str, template_name: str | None = None, headless: bool = False, account: str | None = None) -> dict[str, Any]:
+    ok = ensure_chrome(headless=headless, account=account)
+    if not ok:
+        return _resp({"ok": False, "error": "chrome_not_available"})
+    pub = XiaohongshuPublisher()
+    pub.connect()
+    if not pub.check_login():
+        return _resp({"ok": False, "requires_user_action": True, "user_action": "xhs_login"})
+    pub.publish_long_article(title=title, content=content, template_name=template_name)
+    pub._click_publish()
+    return _resp({"ok": True, "published": True, "title": title})

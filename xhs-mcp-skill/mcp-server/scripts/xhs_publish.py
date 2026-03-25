@@ -368,6 +368,197 @@ class XiaohongshuPublisher:
         print("[cdp_publish] Comment replied.")
         time.sleep(ACTION_INTERVAL)
 
+    def _click_long_article_tab(self):
+        tab_text = SELECTORS["long_article_tab_text"]
+        selector = SELECTORS["image_text_tab"]
+        clicked = self._evaluate(f"""
+            (function() {{
+                var tabs = document.querySelectorAll('{selector}');
+                for (var i = 0; i < tabs.length; i++) {{
+                    if (tabs[i].textContent.trim() === '{tab_text}') {{
+                        tabs[i].click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }})();
+        """)
+        if not clicked:
+            raise CDPError("Could not find long article tab.")
+        time.sleep(TAB_CLICK_WAIT)
+
+    def _click_new_creation(self):
+        btn_text = SELECTORS["new_creation_btn_text"]
+        clicked = self._evaluate(f"""
+            (function() {{
+                var all = document.querySelectorAll('button, [role=\"button\"], .d-button, [class*=\"btn\"], [class*=\"button\"], .creator-actions *');
+                for (var i = 0; i < all.length; i++) {{
+                    var t = all[i].textContent && all[i].textContent.trim();
+                    if (t === '{btn_text}') {{
+                        var el = all[i].closest('button, [role=\"button\"], .d-button');
+                        (el || all[i]).click();
+                        return true;
+                    }}
+                }}
+                var nodes = document.querySelectorAll('*');
+                for (var j = 0; j < nodes.length; j++) {{
+                    var t2 = nodes[j].textContent && nodes[j].textContent.trim();
+                    if (t2 === '{btn_text}') {{
+                        nodes[j].click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }})();
+        """)
+        if not clicked:
+            raise CDPError("Could not find new creation button.")
+        time.sleep(ACTION_INTERVAL)
+
+    def _fill_long_title(self, title: str):
+        selector = SELECTORS["long_title_input"]
+        found = self._evaluate(f"!!document.querySelector('{selector}')")
+        if not found:
+            raise CDPError("Could not find long title input.")
+        escaped = json.dumps(title)
+        self._evaluate(f"""
+            (function() {{
+                var el = document.querySelector('{selector}');
+                var setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLTextAreaElement.prototype, 'value'
+                ).set;
+                el.focus();
+                setter.call(el, {escaped});
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            }})();
+        """)
+        time.sleep(ACTION_INTERVAL)
+
+    def _click_auto_format(self):
+        btn_text = SELECTORS["auto_format_btn_text"]
+        clicked = self._evaluate(f"""
+            (function() {{
+                var buttons = document.querySelectorAll('button, [role=\"button\"], .d-button, [class*=\"btn\"], [class*=\"button\"]');
+                for (var i = 0; i < buttons.length; i++) {{
+                    var t = buttons[i].textContent && buttons[i].textContent.trim();
+                    if (t === '{btn_text}') {{
+                        buttons[i].click();
+                        return true;
+                    }}
+                }}
+                var spans = document.querySelectorAll('.d-button-content .d-text, .d-button-content span');
+                for (var j = 0; j < spans.length; j++) {{
+                    if (spans[j].textContent.trim() === '{btn_text}') {{
+                        var el = spans[j].closest('button, [role=\"button\"], .d-button, [class*=\"btn\"], [class*=\"button\"]');
+                        (el || spans[j]).click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }})();
+        """)
+        if not clicked:
+            raise CDPError("Could not find auto format button.")
+        time.sleep(AUTO_FORMAT_WAIT)
+
+    def _click_next_step(self):
+        btn_text = SELECTORS["next_step_btn_text"]
+        clicked = self._evaluate(f"""
+            (function() {{
+                var buttons = document.querySelectorAll('button, [role=\"button\"], .d-button, [class*=\"btn\"], [class*=\"button\"]');
+                for (var i = 0; i < buttons.length; i++) {{
+                    var t = buttons[i].textContent && buttons[i].textContent.trim();
+                    if (t === '{btn_text}') {{
+                        buttons[i].click();
+                        return true;
+                    }}
+                }}
+                var nodes = document.querySelectorAll('*');
+                for (var j = 0; j < nodes.length; j++) {{
+                    var t2 = nodes[j].textContent && nodes[j].textContent.trim();
+                    if (t2 === '{btn_text}') {{
+                        nodes[j].click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }})();
+        """)
+        if not clicked:
+            raise CDPError("Could not find next step button.")
+        time.sleep(ACTION_INTERVAL)
+
+    def _wait_and_click_next_step(self, timeout_s: int = 6):
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                self._click_next_step()
+                return
+            except CDPError:
+                time.sleep(0.5)
+        raise CDPError("Could not find next step button.")
+
+    def get_template_names(self) -> list[str]:
+        names = self._evaluate(f"""
+            (function() {{
+                var cards = document.querySelectorAll('{SELECTORS["template_card"]}');
+                var out = [];
+                for (var i = 0; i < cards.length; i++) {{
+                    var t = cards[i].querySelector('.template-title, .title, .d-text');
+                    out.push((t && t.textContent && t.textContent.trim()) || '');
+                }}
+                return out;
+            }})();
+        """)
+        if not isinstance(names, list):
+            return []
+        return [str(n or "").strip() for n in names]
+
+    def select_template(self, name: str | None = None):
+        if name:
+            clicked = self._evaluate(f"""
+                (function() {{
+                    var cards = document.querySelectorAll('{SELECTORS["template_card"]}');
+                    for (var i = 0; i < cards.length; i++) {{
+                        var t = cards[i].querySelector('.template-title, .title, .d-text');
+                        var tn = (t && t.textContent && t.textContent.trim()) || '';
+                        if (tn === '{name}') {{
+                            cards[i].click();
+                            return true;
+                        }}
+                    }}
+                    return false;
+                }})();
+            """)
+            if not clicked:
+                raise CDPError("Could not select template by name.")
+        else:
+            clicked = self._evaluate(f"""
+                (function() {{
+                    var card = document.querySelector('{SELECTORS["template_card"]}');
+                    if (!card) return false;
+                    card.click();
+                    return true;
+                }})();
+            """)
+            if not clicked:
+                raise CDPError("Could not select any template.")
+        time.sleep(ACTION_INTERVAL)
+
+    def publish_long_article(self, title: str, content: str, template_name: str | None = None):
+        self._navigate(XHS_CREATOR_URL)
+        self._click_long_article_tab()
+        self._click_new_creation()
+        self._fill_long_title(title)
+        self._fill_content(content)
+        self._click_auto_format()
+        try:
+            self.select_template(template_name)
+        except Exception:
+            pass
+        self._wait_and_click_next_step(timeout_s=6)
+
 
 def main():
     import argparse
