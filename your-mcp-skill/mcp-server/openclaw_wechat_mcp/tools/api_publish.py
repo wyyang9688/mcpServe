@@ -49,7 +49,7 @@ class WeChatPublisher:
                 raise
         return self.access_token
 
-    def upload_image(self, image_path: str) -> str:
+    def upload_image(self, image_path: str) -> dict[str, str]:
         token = self.ensure_valid_token()
         url = f"https://api.weixin.qq.com/cgi-bin/material/add_material?access_token={token}&type=image"
         with open(image_path, "rb") as f:
@@ -58,7 +58,9 @@ class WeChatPublisher:
         result: dict[str, Any] = resp.json()
         if "media_id" not in result:
             raise RuntimeError(f"上传失败: {result}")
-        return str(result["media_id"])
+        media_id = str(result["media_id"])
+        media_url = str(result.get("url", "")) if result.get("url") is not None else ""
+        return {"media_id": media_id, "url": media_url}
 
     def add_draft(self, title: str, content: str, author: str = "", thumb_media_id: str = "", digest: str = "") -> str:
         token = self.ensure_valid_token()

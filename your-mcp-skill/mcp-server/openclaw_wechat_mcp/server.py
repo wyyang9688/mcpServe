@@ -324,36 +324,49 @@ async def wait_for_publish_success(
     loop = asyncio.get_running_loop()
     deadline = loop.time() + (timeout_ms / 1000)
 
-    async def _is_home() -> bool:
+    async def _is_home(p) -> bool:
         try:
             for prefix in cfg.wechat_mp.home_url_prefixes:
-                if page.url.startswith(prefix):
+                if getattr(p, "url", "").startswith(prefix):
                     return True
         except Exception:
             return False
         return False
 
-    async def _has_recent(title: str | None) -> bool:
+    async def _has_recent(p, title: str | None) -> bool:
         try:
-            recent = page.get_by_text("近期发表", exact=False).first
-            if not await recent.is_visible(timeout=200):
+            recent = p.get_by_text("近期发表", exact=False).first
+            if not await recent.is_visible(timeout=400):
                 return False
             if title:
-                return await page.get_by_text(title, exact=False).first.is_visible(timeout=200)
+                return await p.get_by_text(title, exact=False).first.is_visible(timeout=400)
             return True
         except Exception:
             return False
 
-    while loop.time() < deadline:
-        home = await _is_home()
-        recent_ok = await _has_recent(draft_title) if home else False
+    async def _pick_home_page() -> tuple[bool, Any, bool]:
+        # return (found_home, candidate_page, matched_title)
+        candidates = []
+        try:
+            candidates = list(page.context.pages)
+        except Exception:
+            candidates = [page]
+        # check newest tabs first
+        for p in reversed(candidates):
+            if await _is_home(p):
+                matched = await _has_recent(p, draft_title)
+                return True, p, matched
+        return False, page, False
 
-        if home:
+    while loop.time() < deadline:
+        found_home, candidate, recent_ok = await _pick_home_page()
+
+        if found_home:
             return {
                 "ok": True,
                 "published": True,
-                "url": page.url,
-                "recent_section": await _has_recent(None),
+                "url": candidate.url,
+                "recent_section": await _has_recent(candidate, None),
                 "matched_title": recent_ok,
                 "draft_title": draft_title,
                 "profile_dir": str(get_profile_dir()),
@@ -361,14 +374,22 @@ async def wait_for_publish_success(
 
         if ctx is not None:
             elapsed = (timeout_ms / 1000) - max(0.0, deadline - loop.time())
-            await ctx.report_progress(elapsed, total=timeout_ms / 1000, message=page.url)
+            try:
+                urls = []
+                try:
+                    urls = [p.url for p in list(candidate.context.pages)]
+                except Exception:
+                    urls = [candidate.url]
+                await ctx.report_progress(elapsed, total=timeout_ms / 1000, message=" | ".join(urls))
+            except Exception:
+                await ctx.report_progress(elapsed, total=timeout_ms / 1000, message=getattr(candidate, "url", ""))
 
         await asyncio.sleep(poll_ms / 1000)
 
     return {
         "ok": False,
         "published": False,
-        "url": page.url,
+        "url": getattr(page, "url", None),
         "draft_title": draft_title,
         "profile_dir": str(get_profile_dir()),
     }
@@ -776,7 +797,9 @@ async def publish_draft_api(
         pub = WeChatPublisher(use_appid, use_secret)
         token = pub.ensure_valid_token()
         results.append({"index": 0, "action": "get_token", "ok": True})
-        thumb_media_id = pub.upload_image(cover_path)
+        image_info = pub.upload_image(cover_path)
+        thumb_media_id = image_info.get("media_id", "")
+        cover_url = image_info.get("url", "")
         results.append({"index": 1, "action": "upload_image", "ok": True})
         media_id = pub.add_draft(title=title, content=content, author=author or "", thumb_media_id=thumb_media_id, digest=digest or "" )
         results.append({"index": 2, "action": "add_draft", "ok": True})
@@ -784,7 +807,7 @@ async def publish_draft_api(
             await ctx.info(f"draft_created media_id={media_id}")
         except Exception:
             pass
-        sc = {"ok": True, "error": None, "results": results, "media_id": media_id}
+        sc = {"ok": True, "error": None, "results": results, "media_id": media_id, "cover_url": cover_url}
         return {
             "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
             "structuredContent": sc,
@@ -854,7 +877,9 @@ async def create_draft_then_publish(
         pub = WeChatPublisher(use_appid, use_secret)
         token = pub.ensure_valid_token()
         steps.append({"index": 0, "action": "get_token", "ok": True})
-        thumb_media_id = pub.upload_image(cover_path)
+        image_info = pub.upload_image(cover_path)
+        thumb_media_id = image_info.get("media_id", "")
+        cover_url = image_info.get("url", "")
         steps.append({"index": 1, "action": "upload_image", "ok": True})
         media_id = pub.add_draft(
             title=title, content=content, author=author or "", thumb_media_id=thumb_media_id, digest=digest or ""
@@ -889,13 +914,14 @@ async def create_draft_then_publish(
         )
         steps.append({"index": 3, "action": "publish_draft_from_draftbox", "ok": pub_result.get("completed", False)})
         if pub_result.get("requires_user_action"):
-            sc = {
+        sc = {
                 "ok": False,
                 "requires_user_action": True,
                 "user_action": pub_result.get("user_action"),
                 "qr": pub_result.get("qr"),
                 "results": steps + pub_result.get("results", []),
                 "media_id": media_id,
+            "cover_url": cover_url,
             }
             return {
                 "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
@@ -903,7 +929,7 @@ async def create_draft_then_publish(
                 "isError": False,
             }
         if not pub_result.get("completed"):
-            sc = {"ok": False, "error": pub_result.get("error"), "results": steps + pub_result.get("results", [])}
+        sc = {"ok": False, "error": pub_result.get("error"), "results": steps + pub_result.get("results", []), "cover_url": cover_url}
             return {
                 "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
                 "structuredContent": sc,
@@ -1099,7 +1125,9 @@ async def publish_end_to_end(
     # 接口创建草稿
     pub = WeChatPublisher(use_appid, use_secret)
     token = pub.ensure_valid_token()
-    thumb_media_id = pub.upload_image(cover_path)
+    image_info = pub.upload_image(cover_path)
+    thumb_media_id = image_info.get("media_id", "")
+    cover_url = image_info.get("url", "")
     media_id = pub.add_draft(title=title, content=content, author=author or "", thumb_media_id=thumb_media_id, digest=digest or "")
     # 草稿箱发表
     pub_result = await publish_draft_from_draftbox(
@@ -1118,6 +1146,7 @@ async def publish_end_to_end(
             "qr": pub_result.get("qr"),
             "results": pub_result.get("results", []),
             "media_id": media_id,
+            "cover_url": cover_url,
         }
         return {
             "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
@@ -1125,7 +1154,7 @@ async def publish_end_to_end(
             "isError": False,
         }
     if not pub_result.get("completed"):
-        sc = {"ok": False, "error": pub_result.get("error"), "results": pub_result.get("results", []), "media_id": media_id}
+        sc = {"ok": False, "error": pub_result.get("error"), "results": pub_result.get("results", []), "media_id": media_id, "cover_url": cover_url}
         return {
             "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
             "structuredContent": sc,
@@ -1141,6 +1170,7 @@ async def publish_end_to_end(
         "media_id": media_id,
         "profile_dir": poll.get("profile_dir"),
         "matched_title": poll.get("matched_title"),
+        "cover_url": cover_url,
     }
     return {
         "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
