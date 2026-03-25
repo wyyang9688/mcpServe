@@ -23,7 +23,7 @@ def _resp(sc: dict) -> dict:
         "isError": False,
     }
 
-
+@mcp.tool()
 async def login_and_wait(timeout_ms: int = 300000, poll_ms: int = 1000, headless: bool = False, account: str | None = None) -> dict[str, Any]:
     ok = ensure_chrome(headless=headless, account=account)
     if not ok:
@@ -70,6 +70,12 @@ async def publish_image_text(title: str, content: str, images: list[str], headle
     pub._upload_images(images)
     pub._fill_title(title)
     pub._fill_content(content)
+    try:
+        desc = (content or "").strip()[:300]
+        if desc:
+            pub._fill_publish_description(desc)
+    except Exception:
+        pass
     pub._click_publish()
     return _resp({"ok": True, "published": True, "title": title})
 

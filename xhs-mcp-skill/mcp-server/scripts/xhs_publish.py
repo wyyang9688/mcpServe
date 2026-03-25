@@ -47,6 +47,8 @@ SELECTORS = {
     "auto_format_btn_text": "一键排版",
     "next_step_btn_text": "下一步",
     "template_card": ".template-card",
+    "desc_textarea": 'textarea[placeholder*="描述"], textarea[placeholder*="输入正文描述"]',
+    "desc_textarea_alt": 'textarea.d-text, textarea',
 }
 
 PAGE_LOAD_WAIT = 3
@@ -288,6 +290,7 @@ class XiaohongshuPublisher:
         """)
         if clicked:
             print("[cdp_publish] Publish button clicked.")
+            time.sleep(ACTION_INTERVAL)
         else:
             raise CDPError("Could not find publish button.")
 
@@ -367,6 +370,58 @@ class XiaohongshuPublisher:
             raise CDPError("Could not find submit button for comment.")
         print("[cdp_publish] Comment replied.")
         time.sleep(ACTION_INTERVAL)
+
+    def _fill_publish_description(self, text: str):
+        print("[cdp_publish] Filling publish description...")
+        time.sleep(ACTION_INTERVAL)
+        for selector in (SELECTORS["desc_textarea"], SELECTORS["desc_textarea_alt"]):
+            found = self._evaluate(f"!!document.querySelector('{selector}')")
+            if found:
+                escaped = json.dumps(text)
+                self._evaluate(f"""
+                    (function() {{
+                        var el = document.querySelector('{selector}');
+                        if (!el) return false;
+                        var setter = Object.getOwnPropertyDescriptor(
+                            window.HTMLTextAreaElement.prototype, 'value'
+                        ).set;
+                        el.focus();
+                        setter.call(el, {escaped});
+                        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        return true;
+                    }})();
+                """)
+                print("[cdp_publish] Description set.")
+                return
+        print("[cdp_publish] Description textarea not found; skipping.")
+
+    def _is_publish_enabled(self) -> bool:
+        return bool(self._evaluate("""
+            (function() {
+                function enabled(el) {
+                    if (!el) return false;
+                    var disabled = el.disabled || el.getAttribute('disabled') !== null;
+                    var cls = (el.className || '').toString().toLowerCase();
+                    if (cls.indexOf('disabled') >= 0) return false;
+                    return !disabled;
+                }
+                var btns = document.querySelectorAll('button');
+                for (var i=0;i<btns.length;i++){ 
+                    var t = btns[i].textContent && btns[i].textContent.trim();
+                    if (t === '发布') return enabled(btns[i]);
+                }
+                var spans = document.querySelectorAll('.d-button-content .d-text, .d-button-content span');
+                for (var j=0;j<spans.length;j++){
+                    var t2 = spans[j].textContent && spans[j].textContent.trim();
+                    if (t2 === '发布') {
+                        var el = spans[j].closest('button, [role=\"button\"], .d-button, [class*=\"btn\"], [class*=\"button\"]');
+                        return enabled(el || spans[j]);
+                    }
+                }
+                return false;
+            })();
+        """))
 
     def _click_long_article_tab(self):
         tab_text = SELECTORS["long_article_tab_text"]
@@ -558,6 +613,13 @@ class XiaohongshuPublisher:
         except Exception:
             pass
         self._wait_and_click_next_step(timeout_s=6)
+        try:
+            desc = (content or "").strip()
+            if desc:
+                desc = desc[:300]
+                self._fill_publish_description(desc)
+        except Exception:
+            pass
 
 
 def main():
