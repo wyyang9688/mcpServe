@@ -1,11 +1,10 @@
----
 name: "xhs-mcp-skill"
-description: "小红书 MCP 技能：登录、发布图文、回复评论，供 OpenClaw 调用。"
+description: "小红书 MCP 技能：登录等待、发布图文、回复评论。基于脚本 xhs_publish.py 与 Chrome DevTools Protocol。"
 ---
 
-# 小红书 MCP 技能
+# 小红书 MCP 技能（基于最新脚本）
 
-提供最小工具：login_and_wait、publish_image_text、reply_comment。依赖 Chrome 远程调试端口。
+提供工具：login_and_wait、publish_image_text、reply_comment。所有流程严格调用 scripts/xhs_publish.py 与 scripts/chrome_launcher.py 的现有方法，不虚构接口。依赖 Chrome 远程调试端口。
 
 ## 结构
 - xhs-mcp-skill/
@@ -13,37 +12,41 @@ description: "小红书 MCP 技能：登录、发布图文、回复评论，供 
   - config/default.json
   - mcp-server/
     - openclaw_xhs_mcp/
-      - server.py
+      - server.py（导出 FastMCP，方法调用脚本步骤）
+      - __main__.py（python -m openclaw_xhs_mcp 入口）
+      - index.py（mcp.run()）
     - pyproject.toml
   - scripts/
     - chrome_launcher.py
     - account_manager.py
     - xhs_publish.py
 
-## 最小工具
-- login_and_wait：打开登录页并监听登录完成
-- publish_image_text：上传图片、填写标题与正文、点击发布
-- reply_comment：在指定笔记页回复评论
+## 工具
+- login_and_wait：打开登录页并轮询登录完成（connect → open_login_page → check_login）
+- publish_image_text：上传本地图片、填写标题与正文并点击发布（navigate → click tab → upload → fill title → fill content → click publish）
+- reply_comment：在指定笔记页回复评论（navigate → fill comment → click submit）
 
 ## 参数
-- title、content、images（本地绝对路径数组）
-- note_url、text（回复评论）
-- headless、account 可选
+- 通用：headless（bool，可选）、account（string，可选）
+- publish_image_text：title（string）、content（string），images（string[]，本地绝对路径）
+- reply_comment：note_url（string）、text（string）
 
-## 正文图片
-- 正文中的 img 标签 src 必须使用本地绝对路径
-- 发布时自动上传并替换为 URL（图文模式通过上传区域）
+## 正文与图片
+- content 作为纯文本处理：按换行拆分为段落写入编辑器（TipTap/ProseMirror），不解析其中的 HTML img 标签
+- 图片通过 images 参数上传：必须使用本地绝对路径，脚本用 DOM.setFileInputFiles 完成上传
+- 当前仅支持“上传图文”模式；“写长文”模式未在 MCP 工具中暴露（可在脚本扩展后再增加）
 
 ## 依赖与前置
 - 安装依赖：requests、websockets（已在 pyproject 声明）
 - 本机安装 Google Chrome，并允许远程调试端口 9222
 - 首次使用需在非 headless 模式扫码登录
+- 多账号与持久化：由 chrome_launcher 管理独立 profile 目录，account 可选切换
 
 ## 工具调用示例
 - login_and_wait
   - arguments: { "timeout_ms": 300000, "poll_ms": 1000, "headless": false, "account": "default" }
 - publish_image_text
-  - arguments: { "title": "测试图文", "content": "正文文本...", "images": ["g:/media/cover.jpg"], "headless": false, "account": "default" }
+  - arguments: { "title": "测试图文", "content": "正文文本...", "images": ["g:/media/1.jpg","g:/media/2.jpg"], "headless": false, "account": "default" }
 - reply_comment
   - arguments: { "note_url": "https://www.xiaohongshu.com/explore/NOTE_ID", "text": "这是一条回复", "headless": false, "account": "default" }
 
@@ -53,7 +56,11 @@ description: "小红书 MCP 技能：登录、发布图文、回复评论，供 
 - 发布成功：structuredContent.ok=true，published=true
 - 回复成功：structuredContent.ok=true，replied=true
 
-# 小红书发布流程参考
+## 启动方式
+- Inspector：在仓库根目录运行 npm run inspector:xhs
+- 直接运行：cd xhs-mcp-skill/mcp-server 后执行 python -m openclaw_xhs_mcp
+
+# 发布流程参考（与脚本一致）
 
 本文档描述通过 CDP（Chrome DevTools Protocol）自动发布内容到小红书创作者中心的完整流程。
 
@@ -117,30 +124,14 @@ description: "小红书 MCP 技能：登录、发布图文、回复评论，供 
 - 脚本填写完成后提示用户在浏览器中检查预览
 - 用户确认后点击发布按钮（或脚本点击）
 
-## 写长文模式详细步骤
-1-2. 启动 Chrome 和检查登录：同上传图文模式
-3. 导航到发布页并点击"写长文"tab：scripts/xhs_publish.py → _click_long_article_tab()
-4. 点击"新的创作"：scripts/xhs_publish.py → _click_new_creation()
-5. 填写长文标题：scripts/xhs_publish.py → _fill_long_title()
-6. 填写长文正文：同上传图文模式
-7. 一键排版：scripts/xhs_publish.py → _click_auto_format()
-8. 模板选择：scripts/xhs_publish.py → get_template_names() + select_template(name)
-9. 下一步并填写发布页描述：scripts/xhs_publish.py → click_next_and_prepare_publish(content)
-10. 用户确认并发布
+> 注：写长文模式相关方法存在于脚本中，但当前 MCP 工具未暴露该模式；如需启用，请在 server.py 增加对应方法并更新插件工具列表。
 
 ## DOM 选择器参考
 注意：前端可能更新，以下选择器基于当前结构，需要时更新 scripts/xhs_publish.py 的 SELECTORS。
 - 图片上传：input.upload-input / input[type="file"]
 - 标题输入（图文）：input[placeholder*="填写标题"] / input.d-text
-- 标题输入（长文）：textarea.d-text[placeholder="输入标题"]
 - 正文编辑：div.tiptap.ProseMirror / div.ProseMirror[contenteditable="true"]
 - 发布按钮：文本匹配“发布”
-- 写长文 tab：文本匹配“写长文”（div.creator-tab）
-- 新的创作按钮：文本匹配“新的创作”
-- 一键排版按钮：文本匹配“一键排版”
-- 模板卡片：.template-card（已选：.template-card.selected）
-- 模板名称：.template-card .template-title
-- 下一步按钮：文本匹配“下一步”
 - 登录检测：URL 包含 login / .user-info, .creator-header
 
 ## 错误处理
