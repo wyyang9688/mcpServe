@@ -6,6 +6,7 @@ from datetime import datetime
 import builtins
 from pathlib import Path
 import json
+import re
 
 from mcp.server.fastmcp import Context, FastMCP
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -914,7 +915,7 @@ async def create_draft_then_publish(
         )
         steps.append({"index": 3, "action": "publish_draft_from_draftbox", "ok": pub_result.get("completed", False)})
         if pub_result.get("requires_user_action"):
-        sc = {
+            sc = {
                 "ok": False,
                 "requires_user_action": True,
                 "user_action": pub_result.get("user_action"),
@@ -929,7 +930,7 @@ async def create_draft_then_publish(
                 "isError": False,
             }
         if not pub_result.get("completed"):
-        sc = {"ok": False, "error": pub_result.get("error"), "results": steps + pub_result.get("results", []), "cover_url": cover_url}
+            sc = {"ok": False, "error": pub_result.get("error"), "results": steps + pub_result.get("results", []), "cover_url": cover_url}
             return {
                 "content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False, indent=2)}],
                 "structuredContent": sc,
@@ -1125,6 +1126,29 @@ async def publish_end_to_end(
     # 接口创建草稿
     pub = WeChatPublisher(use_appid, use_secret)
     token = pub.ensure_valid_token()
+    try:
+        pattern = re.compile(r'<img[^>]*\bsrc=[\'"]([^\'"]+)[\'"]', re.IGNORECASE)
+        matches = pattern.findall(content or "")
+        srcs: list[str] = []
+        for src in matches:
+            p = Path(src)
+            if p.is_absolute() and p.is_file():
+                srcs.append(src)
+        if srcs:
+            sem = asyncio.Semaphore(3)
+            async def do_upload(s: str):
+                async with sem:
+                    return s, await asyncio.to_thread(pub.upload_image, s)
+            tasks = [asyncio.create_task(do_upload(s)) for s in srcs]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, tuple):
+                    s, info_inline = r
+                    inline_url = info_inline.get("url", "")
+                    if inline_url:
+                        content = content.replace(s, inline_url)
+    except Exception:
+        pass
     image_info = pub.upload_image(cover_path)
     thumb_media_id = image_info.get("media_id", "")
     cover_url = image_info.get("url", "")

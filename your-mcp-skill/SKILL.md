@@ -88,7 +88,7 @@ python scripts/publish_end_to_end.py \
 
 ## 脚本参数说明
 ### 正文图片处理
-- 正文中的图片请先下载到本地（绝对路径）。
+- 正文中的 img 标签 src 必须使用本地绝对路径（例如 g:/path/to/img.jpg 或 C:\\Users\\...\\img.png）。
 - 发布过程中会将本地图片上传为素材并返回 URL（在结果的 `structuredContent.cover_url` 字段中提供）。
 - 生成 HTML 正文时，将图片以 `<img src="返回的URL">` 的形式插入到内容中；多图请重复“下载→上传→插入”的流程。
 
