@@ -1,0 +1,10 @@
+{
+  "name": "xhs-mcp-skill",
+  "type": "mcp",
+  "serverPath": "mcp-server/openclaw_xhs_mcp/server.py",
+  "tools": [
+    { "name": "login_and_wait" },
+    { "name": "publish_image_text" },
+    { "name": "reply_comment" }
+  ]
+}

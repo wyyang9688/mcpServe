@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "openclaw-xhs-mcp"
+version = "0.1.0"
+description = "XHS MCP server for OpenClaw"
+authors = ["OpenClaw"]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<4.0"
+requests = "*"
+websockets = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

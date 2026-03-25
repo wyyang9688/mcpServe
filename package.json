@@ -1,0 +1,12 @@
+{
+  "name": "openclaw-mcp-scripts",
+  "private": true,
+  "scripts": {
+    "inspector:wx": "cd your-mcp-skill/mcp-server && npx -y @modelcontextprotocol/inspector --transport stdio -- python -m openclaw_wechat_mcp",
+    "inspector:wx:no-profile": "powershell -NoProfile -Command \"cd your-mcp-skill/mcp-server; npx -y @modelcontextprotocol/inspector --transport stdio -- python -m openclaw_wechat_mcp\"",
+    "inspector:xhs": "cd xhs-mcp-skill/mcp-server && npx -y @modelcontextprotocol/inspector --transport stdio -- python -m openclaw_xhs_mcp",
+    "inspector:xhs:no-profile": "powershell -NoProfile -Command \"cd xhs-mcp-skill/mcp-server; npx -y @modelcontextprotocol/inspector --transport stdio -- python -m openclaw_xhs_mcp\"",
+    "logs:wx": "powershell -NoProfile -Command \"Get-Content .\\your-mcp-skill\\mcp-server\\data\\mcp.log -Tail 200 -Wait -Encoding UTF8\"",
+    "logs:xhs": "powershell -NoProfile -Command \"Get-Content .\\xhs-mcp-skill\\mcp-server\\data\\mcp.log -Tail 200 -Wait -Encoding UTF8\""
+  }
+}

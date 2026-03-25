@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "inspector": "cd mcp-server && npx -y @modelcontextprotocol/inspector --transport stdio -- python -m openclaw_wechat_mcp",
+    
     "inspector:no-profile": "powershell -NoProfile -Command \"cd mcp-server; npx -y @modelcontextprotocol/inspector --transport stdio -- python -m openclaw_wechat_mcp\"",
     "logs": "powershell -NoProfile -Command \"Get-Content .\\mcp-server\\data\\mcp.log -Tail 200 -Wait -Encoding UTF8\""
   }
